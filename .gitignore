@@ -17,3 +17,6 @@ __pycache__/
 *.snupkg
 **/node_modules/
 **/target/
+**/*.egg-info/
+bindings/python/build/
+bindings/python/dist/

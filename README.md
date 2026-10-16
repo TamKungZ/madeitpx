@@ -85,6 +85,11 @@ The [`@madeit/pixelart` package](bindings/node) wraps the native C ABI and
 requires a separately built `madeitpx` shared library for the current platform
 and architecture.
 
+## Python binding
+
+The [`madeitpx` package](bindings/python) installs with pip and includes native
+libraries for Windows, Linux (glibc), and macOS on x64 and ARM64.
+
 ## Validation images
 
 The [`test_sources/test-patterns`](test_sources/test-patterns) directory

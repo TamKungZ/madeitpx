@@ -23,6 +23,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -35,6 +38,10 @@ jobs:
           MADEITPX_LIBRARY_PATH: ${{ github.workspace }}/zig-out/lib/libmadeitpx.so
       - run: npm ci --prefix bindings/node
       - run: npm test --prefix bindings/node
+        env:
+          MADEITPX_LIBRARY_PATH: ${{ github.workspace }}/zig-out/lib/libmadeitpx.so
+      - run: python -m pip install --editable bindings/python
+      - run: python -m unittest discover --start-directory bindings/python/tests --verbose
         env:
           MADEITPX_LIBRARY_PATH: ${{ github.workspace }}/zig-out/lib/libmadeitpx.so
 
@@ -65,7 +72,27 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
       - run: zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }}
+      - name: Stage Python native library
+        shell: bash
+        run: |
+          case "${{ matrix.target }}" in
+            x86_64-windows) rid=windows-x64; library=zig-out/bin/madeitpx.dll ;;
+            aarch64-windows) rid=windows-arm64; library=zig-out/bin/madeitpx.dll ;;
+            x86_64-linux-gnu.2.17) rid=linux-x64-gnu; library=zig-out/lib/libmadeitpx.so ;;
+            aarch64-linux-gnu.2.17) rid=linux-arm64-gnu; library=zig-out/lib/libmadeitpx.so ;;
+            x86_64-macos) rid=darwin-x64; library=zig-out/lib/libmadeitpx.dylib ;;
+            aarch64-macos) rid=darwin-arm64; library=zig-out/lib/libmadeitpx.dylib ;;
+            *) echo "Unsupported target: ${{ matrix.target }}" >&2; exit 1 ;;
+          esac
+          destination="bindings/python/src/madeitpx/native/$rid"
+          mkdir -p "$destination"
+          cp "$library" "$destination/"
+      - run: python -m pip install --editable bindings/python
+      - run: python -m unittest discover --start-directory bindings/python/tests --verbose
       - run: dotnet build bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/MadeIt.PixelArt.SmokeTests.csproj --configuration Release
       - name: Stage native library beside smoke test
         shell: bash
