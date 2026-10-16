@@ -77,7 +77,7 @@ fn splitBucket(pixels: [*]const u8, indices: []usize, bucket: Bucket, component:
     }
 
     var split = bucket.start;
-    const split_below = threshold == 255;
+    const split_below = threshold == bucket.maximum[component];
     for (bucket.start..bucket.start + bucket.len) |slot| {
         const index = indices[slot];
         const value = pixels[index * 4 + component];
@@ -462,4 +462,28 @@ test "vector palette search matches exhaustive nearest-color selection" {
             );
         }
     }
+}
+
+test "palette splitting handles a dominant maximum-channel color" {
+    var pixels: [73 * 4]u8 = undefined;
+    for (0..40) |index| {
+        const offset = index * 4;
+        pixels[offset] = 250;
+        pixels[offset + 1] = 250;
+        pixels[offset + 2] = 240;
+        pixels[offset + 3] = 255;
+    }
+    for (0..33) |index| {
+        const value: u8 = @intCast(index + 1);
+        const offset = (index + 40) * 4;
+        pixels[offset] = value;
+        pixels[offset + 1] = value + 1;
+        pixels[offset + 2] = value + 2;
+        pixels[offset + 3] = 255;
+    }
+
+    var indices: [73]usize = undefined;
+    const palette = buildPalette(&pixels, pixels.len / 4, 32, &indices);
+    try std.testing.expect(palette.len > 1);
+    try std.testing.expect(palette.len <= 32);
 }
