@@ -35,6 +35,13 @@ const max_palette_colors = 64;
 const PaletteBucket = struct {
     start: usize,
     len: usize,
+    minimum: [3]u8,
+    maximum: [3]u8,
+};
+
+const BucketSplit = struct {
+    left: PaletteBucket,
+    right: PaletteBucket,
 };
 
 const Palette = struct {
@@ -169,15 +176,22 @@ fn pixelChannel(pixel: [*]const u8, index: usize, component: usize) u8 {
     return pixel[index * 4 + component];
 }
 
-fn colorRange(pixels: [*]const u8, indices: []const usize, bucket: PaletteBucket, component: usize) u16 {
-    var minimum: u8 = 255;
-    var maximum: u8 = 0;
-    for (bucket.start..bucket.start + bucket.len) |slot| {
+fn bucketBounds(pixels: [*]const u8, indices: []const usize, start: usize, len: usize) PaletteBucket {
+    var minimum: [3]u8 = @splat(255);
+    var maximum: [3]u8 = @splat(0);
+    for (start..start + len) |slot| {
         const index = indices[slot];
-        minimum = @min(minimum, pixelChannel(pixels, index, component));
-        maximum = @max(maximum, pixelChannel(pixels, index, component));
+        for (0..3) |component| {
+            const value = pixelChannel(pixels, index, component);
+            minimum[component] = @min(minimum[component], value);
+            maximum[component] = @max(maximum[component], value);
+        }
     }
-    return @as(u16, maximum) - minimum;
+    return .{ .start = start, .len = len, .minimum = minimum, .maximum = maximum };
+}
+
+fn bucketRange(bucket: PaletteBucket, component: usize) u16 {
+    return @as(u16, bucket.maximum[component]) - bucket.minimum[component];
 }
 
 fn bucketMean(pixels: [*]const u8, indices: []const usize, bucket: PaletteBucket) [3]u8 {
@@ -193,7 +207,7 @@ fn bucketMean(pixels: [*]const u8, indices: []const usize, bucket: PaletteBucket
     };
 }
 
-fn splitBucket(pixels: [*]const u8, indices: []usize, bucket: PaletteBucket, component: usize) ?usize {
+fn splitBucket(pixels: [*]const u8, indices: []usize, bucket: PaletteBucket, component: usize) ?BucketSplit {
     var histogram: [256]usize = @splat(0);
     for (bucket.start..bucket.start + bucket.len) |slot| {
         const index = indices[slot];
@@ -221,7 +235,11 @@ fn splitBucket(pixels: [*]const u8, indices: []usize, bucket: PaletteBucket, com
         }
     }
     if (split == bucket.start or split == bucket.start + bucket.len) return null;
-    return split - bucket.start;
+    const left_len = split - bucket.start;
+    return .{
+        .left = bucketBounds(pixels, indices, bucket.start, left_len),
+        .right = bucketBounds(pixels, indices, split, bucket.len - left_len),
+    };
 }
 
 fn colorDistance(pixel: [*]const u8, index: usize, color: [3]u8) u32 {
@@ -236,6 +254,7 @@ fn nearestColor(pixels: [*]const u8, index: usize, palette: []const [3]u8) usize
     var best_distance: u32 = std.math.maxInt(u32);
     for (palette, 0..) |color, palette_index| {
         const distance = colorDistance(pixels, index, color);
+        if (distance == 0) return palette_index;
         if (distance < best_distance) {
             best_distance = distance;
             best_index = palette_index;
@@ -276,9 +295,9 @@ fn buildPalette(pixels: [*]u8, pixel_count: usize, limit: usize, indices: []usiz
         return .{ .colors = unique_colors, .len = unique_count };
     }
 
-    var bucket_count: usize = 1;
-    buckets[0] = .{ .start = 0, .len = pixel_count };
     for (indices, 0..) |*index, value| index.* = value;
+    var bucket_count: usize = 1;
+    buckets[0] = bucketBounds(pixels, indices, 0, pixel_count);
 
     while (bucket_count < @min(limit, pixel_count)) {
         var selected: ?usize = null;
@@ -288,9 +307,9 @@ fn buildPalette(pixels: [*]u8, pixel_count: usize, limit: usize, indices: []usiz
         for (buckets[0..bucket_count], 0..) |bucket, bucket_index| {
             if (bucket.len < 2) continue;
             var component: usize = 0;
-            var range = colorRange(pixels, indices, bucket, 0);
+            var range = bucketRange(bucket, 0);
             for (1..3) |candidate| {
-                const candidate_range = colorRange(pixels, indices, bucket, candidate);
+                const candidate_range = bucketRange(bucket, candidate);
                 if (candidate_range > range) {
                     range = candidate_range;
                     component = candidate;
@@ -306,13 +325,9 @@ fn buildPalette(pixels: [*]u8, pixel_count: usize, limit: usize, indices: []usiz
         }
 
         const selected_index = selected orelse break;
-        const bucket = buckets[selected_index];
-        const left_len = splitBucket(pixels, indices, bucket, selected_component) orelse break;
-        buckets[selected_index].len = left_len;
-        buckets[bucket_count] = .{
-            .start = bucket.start + left_len,
-            .len = bucket.len - left_len,
-        };
+        const split = splitBucket(pixels, indices, buckets[selected_index], selected_component) orelse break;
+        buckets[selected_index] = split.left;
+        buckets[bucket_count] = split.right;
         bucket_count += 1;
     }
 
