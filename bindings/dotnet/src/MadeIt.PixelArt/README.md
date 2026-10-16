@@ -1,5 +1,7 @@
 # MadeIt.PixelArt
 
+![MadeIt.PixelArt logo](logo.png)
+
 `MadeIt.PixelArt` is a .NET binding for the native `madeitpx` library. It
 accepts RGBA8 byte arrays and returns opaque RGBA8 output.
 
