@@ -35,5 +35,5 @@ first used. For local builds or a custom library, set the
 variable to its path. A JAR built from source does not include native binaries
 unless they are staged under `src/main/resources/native` before packaging.
 
-The release workflow attaches the JAR to GitHub Releases. Maven Central
-publishing is not configured.
+The release workflow publishes the artifact to Maven Central and attaches the
+JAR to GitHub Releases.

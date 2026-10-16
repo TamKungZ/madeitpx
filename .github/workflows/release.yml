@@ -6,16 +6,17 @@ on:
       - "v*.*.*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  publish:
+  create-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Create release from changelog
+      - name: Prepare release notes
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           python3 - <<'PY'
@@ -38,222 +39,22 @@ jobs:
           if not notes:
               raise SystemExit(f"CHANGELOG.md section for {version} is empty")
 
-          notes_path = Path(os.environ["RUNNER_TEMP"]) / "release-notes.md"
-          notes_path.write_text(notes + "\n", encoding="utf-8")
-          print(f"Prepared release notes for {tag}")
+          Path(os.environ["RUNNER_TEMP"], "release-notes.md").write_text(
+              notes + "\n", encoding="utf-8"
+          )
           PY
-          gh release create "$RELEASE_TAG" \
-            --title "madeitpx $RELEASE_TAG" \
-            --notes-file "$RUNNER_TEMP/release-notes.md"
-
-  publish-node-platforms:
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: windows-latest
-            package: win32-x64
-            target: x86_64-windows
-            library: zig-out/bin/madeitpx.dll
-          - runner: windows-11-arm
-            package: win32-arm64
-            target: aarch64-windows
-            library: zig-out/bin/madeitpx.dll
-          - runner: ubuntu-24.04
-            package: linux-x64-gnu
-            target: x86_64-linux-gnu.2.17
-            library: zig-out/lib/libmadeitpx.so
-          - runner: ubuntu-24.04-arm
-            package: linux-arm64-gnu
-            target: aarch64-linux-gnu.2.17
-            library: zig-out/lib/libmadeitpx.so
-          - runner: macos-15-intel
-            package: darwin-x64
-            target: x86_64-macos
-            library: zig-out/lib/libmadeitpx.dylib
-          - runner: macos-15
-            package: darwin-arm64
-            target: aarch64-macos
-            library: zig-out/lib/libmadeitpx.dylib
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24.x
-          registry-url: https://registry.npmjs.org
-          scope: "@madeit"
-      - name: Build and publish platform package
-        shell: bash
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          PACKAGE: ${{ matrix.package }}
-          TARGET: ${{ matrix.target }}
-          LIBRARY: ${{ matrix.library }}
-          VERSION: ${{ github.ref_name }}
-        run: |
-          zig build -Doptimize=ReleaseFast -Dtarget="$TARGET"
-          package_dir="bindings/node/platforms/$PACKAGE"
-          cp "$LIBRARY" "$package_dir/"
-          cp LICENSE "$package_dir/LICENSE"
-          version="${VERSION#v}"
-          node -e "const fs=require('node:fs'); const p='$package_dir/package.json'; const m=JSON.parse(fs.readFileSync(p)); m.version='$version'; fs.writeFileSync(p, JSON.stringify(m, null, 2)+'\n');"
-          npm publish "$package_dir" --access public
-
-  publish-node:
-    needs: publish-node-platforms
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24.x
-          registry-url: https://registry.npmjs.org
-          scope: "@madeit"
-      - name: Publish Node.js package
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          VERSION: ${{ github.ref_name }}
-        run: |
-          node - <<'JS'
-          const fs = require('node:fs');
-          const file = 'bindings/node/package.json';
-          const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
-          const version = process.env.VERSION.replace(/^v/, '');
-          manifest.version = version;
-          for (const name of Object.keys(manifest.optionalDependencies)) {
-            manifest.optionalDependencies[name] = version;
-          }
-          fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
-          JS
-          npm publish bindings/node --access public
-
-  package-java:
-    needs: publish
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-      - name: Build native libraries and package Java artifact
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          version="${RELEASE_TAG#v}"
-          mvn --batch-mode --file bindings/java/pom.xml versions:set \
-            -DnewVersion="$version" \
-            -DgenerateBackupPoms=false
-          while IFS=' ' read -r target platform library; do
-            zig build -Doptimize=ReleaseFast -Dtarget="$target"
-            destination="bindings/java/src/main/resources/native/$platform"
-            mkdir -p "$destination"
-            cp "$library" "$destination/"
-          done <<'TARGETS'
-          x86_64-windows windows-x64 zig-out/bin/madeitpx.dll
-          aarch64-windows windows-arm64 zig-out/bin/madeitpx.dll
-          x86_64-linux-gnu.2.17 linux-x64-gnu zig-out/lib/libmadeitpx.so
-          aarch64-linux-gnu.2.17 linux-arm64-gnu zig-out/lib/libmadeitpx.so
-          x86_64-macos darwin-x64 zig-out/lib/libmadeitpx.dylib
-          aarch64-macos darwin-arm64 zig-out/lib/libmadeitpx.dylib
-          TARGETS
-          mvn --batch-mode --file bindings/java/pom.xml package
-      - name: Attach Java package to GitHub release
+      - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release upload "$RELEASE_TAG" "bindings/java/target/madeitpx-${RELEASE_TAG#v}.jar" --clobber
-
-  build-dotnet-native:
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: windows-latest
-            rid: win-x64
-            target: x86_64-windows
-            library: zig-out/bin/madeitpx.dll
-          - runner: windows-11-arm
-            rid: win-arm64
-            target: aarch64-windows
-            library: zig-out/bin/madeitpx.dll
-          - runner: ubuntu-24.04
-            rid: linux-x64
-            target: x86_64-linux-gnu.2.17
-            library: zig-out/lib/libmadeitpx.so
-          - runner: ubuntu-24.04-arm
-            rid: linux-arm64
-            target: aarch64-linux-gnu.2.17
-            library: zig-out/lib/libmadeitpx.so
-          - runner: macos-15-intel
-            rid: osx-x64
-            target: x86_64-macos
-            library: zig-out/lib/libmadeitpx.dylib
-          - runner: macos-15
-            rid: osx-arm64
-            target: aarch64-macos
-            library: zig-out/lib/libmadeitpx.dylib
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-      - name: Build native library
-        shell: bash
-        env:
-          TARGET: ${{ matrix.target }}
-          LIBRARY: ${{ matrix.library }}
-          RID: ${{ matrix.rid }}
         run: |
-          zig build -Doptimize=ReleaseFast -Dtarget="$TARGET"
-          destination="dotnet-native/runtimes/$RID/native"
-          mkdir -p "$destination"
-          cp "$LIBRARY" "$destination/"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: madeitpx-${{ matrix.rid }}
-          path: dotnet-native/
-          if-no-files-found: error
-          retention-days: 1
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --title "madeitpx $RELEASE_TAG" \
+              --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
 
-  package-dotnet:
-    needs: [publish, build-dotnet-native]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: madeitpx-*
-          path: bindings/dotnet/src/MadeIt.PixelArt
-          merge-multiple: true
-      - name: Pack NuGet package with native assets
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          version="${RELEASE_TAG#v}"
-          dotnet pack bindings/dotnet/src/MadeIt.PixelArt/MadeIt.PixelArt.csproj \
-            --configuration Release \
-            --output artifacts \
-            -p:PackageVersion="$version"
-      - name: Attach NuGet package to GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release upload "$RELEASE_TAG" "artifacts/MadeIt.PixelArt-${RELEASE_TAG#v}.nupkg" --clobber
-
-  build-python-native:
+  build-native:
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -292,22 +93,188 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
-          LIBRARY: ${{ matrix.library }}
           RID: ${{ matrix.rid }}
+          LIBRARY: ${{ matrix.library }}
         run: |
+          zig build test
           zig build -Doptimize=ReleaseFast -Dtarget="$TARGET"
-          destination="python-native/native/$RID"
-          mkdir -p "$destination"
-          cp "$LIBRARY" "$destination/"
+          mkdir -p "native/$RID"
+          cp "$LIBRARY" "native/$RID/"
       - uses: actions/upload-artifact@v4
         with:
-          name: madeitpx-python-${{ matrix.rid }}
-          path: python-native/
+          name: madeitpx-native-${{ matrix.rid }}
+          path: native/
           if-no-files-found: error
           retention-days: 1
 
+  attach-native:
+    needs: [create-release, build-native]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: madeitpx-native-*
+          path: native-assets
+          merge-multiple: true
+      - name: Create native release archives
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZIP_DEFLATED, ZipFile
+
+          native = Path("native-assets")
+          output = Path("release-assets")
+          output.mkdir()
+          for platform_dir in sorted(native.iterdir()):
+              if not platform_dir.is_dir():
+                  continue
+              files = list(platform_dir.iterdir())
+              if len(files) != 1 or not files[0].is_file():
+                  raise SystemExit(f"Unexpected native files in {platform_dir}")
+              archive = output / f"madeitpx-{platform_dir.name}.zip"
+              with ZipFile(archive, "w", ZIP_DEFLATED) as bundle:
+                  bundle.write(files[0], files[0].name)
+                  bundle.write("include/madeitpx.h", "madeitpx.h")
+                  bundle.write("LICENSE", "LICENSE")
+          if len(list(output.glob("*.zip"))) != 6:
+              raise SystemExit("Expected native archives for all six supported targets")
+          PY
+      - name: Attach native archives to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release upload "$RELEASE_TAG" release-assets/*.zip --clobber
+
+  publish-node-platforms:
+    needs: [create-release, build-native]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: windows-x64
+            package: win32-x64
+          - rid: windows-arm64
+            package: win32-arm64
+          - rid: linux-x64-gnu
+            package: linux-x64-gnu
+          - rid: linux-arm64-gnu
+            package: linux-arm64-gnu
+          - rid: darwin-x64
+            package: darwin-x64
+          - rid: darwin-arm64
+            package: darwin-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          registry-url: https://registry.npmjs.org
+          scope: "@madeit"
+      - uses: actions/download-artifact@v4
+        with:
+          name: madeitpx-native-${{ matrix.rid }}
+          path: native-assets
+      - name: Publish platform package
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          RID: ${{ matrix.rid }}
+          PACKAGE: ${{ matrix.package }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          package_dir="bindings/node/platforms/$PACKAGE"
+          library=$(find "native-assets/$RID" -maxdepth 1 -type f -print -quit)
+          test -n "$library"
+          cp "$library" "$package_dir/"
+          cp LICENSE "$package_dir/LICENSE"
+          version="${RELEASE_TAG#v}"
+          node -e "const fs=require('node:fs'); const p='$package_dir/package.json'; const m=JSON.parse(fs.readFileSync(p)); m.version='$version'; fs.writeFileSync(p, JSON.stringify(m, null, 2)+'\n');"
+          npm publish "$package_dir" --access public
+
+  publish-node:
+    needs: publish-node-platforms
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          registry-url: https://registry.npmjs.org
+          scope: "@madeit"
+      - name: Publish Node.js package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node - <<'JS'
+          const fs = require('node:fs');
+          const file = 'bindings/node/package.json';
+          const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+          const version = process.env.RELEASE_TAG.replace(/^v/, '');
+          manifest.version = version;
+          for (const name of Object.keys(manifest.optionalDependencies)) {
+            manifest.optionalDependencies[name] = version;
+          }
+          fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
+          JS
+          npm publish bindings/node --access public
+
+  publish-dotnet:
+    needs: [create-release, build-native]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: madeitpx-native-*
+          path: native-assets
+          merge-multiple: true
+      - name: Pack and publish NuGet package
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          project="bindings/dotnet/src/MadeIt.PixelArt"
+          for mapping in \
+            "windows-x64:win-x64:madeitpx.dll" \
+            "windows-arm64:win-arm64:madeitpx.dll" \
+            "linux-x64-gnu:linux-x64:libmadeitpx.so" \
+            "linux-arm64-gnu:linux-arm64:libmadeitpx.so" \
+            "darwin-x64:osx-x64:libmadeitpx.dylib" \
+            "darwin-arm64:osx-arm64:libmadeitpx.dylib"; do
+            IFS=: read -r source rid library <<< "$mapping"
+            destination="$project/runtimes/$rid/native"
+            mkdir -p "$destination"
+            cp "native-assets/$source/$library" "$destination/"
+          done
+          version="${RELEASE_TAG#v}"
+          dotnet pack "$project/MadeIt.PixelArt.csproj" \
+            --configuration Release \
+            --output artifacts \
+            -p:PackageVersion="$version"
+          dotnet nuget push "artifacts/MadeIt.PixelArt-$version.nupkg" \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+      - name: Attach NuGet package to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release upload "$RELEASE_TAG" "artifacts/MadeIt.PixelArt-${RELEASE_TAG#v}.nupkg" --clobber
+
   publish-python:
-    needs: [publish, build-python-native]
+    needs: [create-release, build-native]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -322,13 +289,18 @@ jobs:
           python-version: "3.13"
       - uses: actions/download-artifact@v4
         with:
-          pattern: madeitpx-python-*
-          path: bindings/python/src/madeitpx
+          pattern: madeitpx-native-*
+          path: native-assets
           merge-multiple: true
-      - name: Build wheel and source distribution
+      - name: Build Python distributions
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
+          for rid in windows-x64 windows-arm64 linux-x64-gnu linux-arm64-gnu darwin-x64 darwin-arm64; do
+            destination="bindings/python/src/madeitpx/native/$rid"
+            mkdir -p "$destination"
+            cp "native-assets/$rid/"* "$destination/"
+          done
           version="${RELEASE_TAG#v}"
           sed -i "s/^__version__ = .*/__version__ = \"$version\"/" bindings/python/src/madeitpx/__init__.py
           python -m pip install build
@@ -337,7 +309,9 @@ jobs:
           from pathlib import Path
           from zipfile import ZipFile
 
-          wheel = next(Path("dist").glob("*.whl"))
+          wheels = list(Path("dist").glob("*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"Expected one Python wheel, found {len(wheels)}")
           expected = {
               "madeitpx/native/windows-x64/madeitpx.dll",
               "madeitpx/native/windows-arm64/madeitpx.dll",
@@ -346,89 +320,90 @@ jobs:
               "madeitpx/native/darwin-x64/libmadeitpx.dylib",
               "madeitpx/native/darwin-arm64/libmadeitpx.dylib",
           }
-          with ZipFile(wheel) as archive:
+          with ZipFile(wheels[0]) as archive:
               missing = expected.difference(archive.namelist())
           if missing:
               raise SystemExit(f"Wheel is missing native libraries: {sorted(missing)}")
           PY
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-      - name: Attach Python distributions to GitHub release
+      - name: Attach Python distributions to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: gh release upload "$RELEASE_TAG" dist/* --clobber
 
-  build-rust-native:
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: windows-latest
-            rid: windows-x64
-            target: x86_64-windows
-            library: zig-out/bin/madeitpx.dll
-          - runner: windows-11-arm
-            rid: windows-arm64
-            target: aarch64-windows
-            library: zig-out/bin/madeitpx.dll
-          - runner: ubuntu-24.04
-            rid: linux-x64-gnu
-            target: x86_64-linux-gnu.2.17
-            library: zig-out/lib/libmadeitpx.so
-          - runner: ubuntu-24.04-arm
-            rid: linux-arm64-gnu
-            target: aarch64-linux-gnu.2.17
-            library: zig-out/lib/libmadeitpx.so
-          - runner: macos-15-intel
-            rid: darwin-x64
-            target: x86_64-macos
-            library: zig-out/lib/libmadeitpx.dylib
-          - runner: macos-15
-            rid: darwin-arm64
-            target: aarch64-macos
-            library: zig-out/lib/libmadeitpx.dylib
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.17.0
-      - name: Build native library
-        shell: bash
-        env:
-          TARGET: ${{ matrix.target }}
-          LIBRARY: ${{ matrix.library }}
-          RID: ${{ matrix.rid }}
-        run: |
-          zig build -Doptimize=ReleaseFast -Dtarget="$TARGET"
-          destination="rust-native/native/$RID"
-          mkdir -p "$destination"
-          cp "$LIBRARY" "$destination/"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: madeitpx-rust-${{ matrix.rid }}
-          path: rust-native/
-          if-no-files-found: error
-          retention-days: 1
-
   publish-rust:
-    needs: [publish, build-rust-native]
+    needs: [create-release, build-native]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/download-artifact@v4
         with:
-          pattern: madeitpx-rust-*
-          path: bindings/rust
+          pattern: madeitpx-native-*
+          path: native-assets
           merge-multiple: true
-      - name: Publish crate
+      - name: Publish crate to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
+          for rid in windows-x64 windows-arm64 linux-x64-gnu linux-arm64-gnu darwin-x64 darwin-arm64; do
+            mkdir -p "bindings/rust/native/$rid"
+            cp "native-assets/$rid/"* "bindings/rust/native/$rid/"
+          done
           version="${RELEASE_TAG#v}"
           sed -i "s/^version = .*/version = \"$version\"/" bindings/rust/Cargo.toml
           cargo update --manifest-path bindings/rust/Cargo.toml --workspace
           cargo publish --manifest-path bindings/rust/Cargo.toml
+
+  publish-java:
+    needs: [create-release, build-native]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          server-id: central
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: madeitpx-native-*
+          path: native-assets
+          merge-multiple: true
+      - name: Deploy Java artifact to Maven Central
+        env:
+          MAVEN_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          printf '%s' "$MAVEN_GPG_PRIVATE_KEY" | gpg --batch --import
+          for rid in windows-x64 windows-arm64 linux-x64-gnu linux-arm64-gnu darwin-x64 darwin-arm64; do
+            mkdir -p "bindings/java/src/main/resources/native/$rid"
+          done
+          cp native-assets/windows-x64/madeitpx.dll bindings/java/src/main/resources/native/windows-x64/
+          cp native-assets/windows-arm64/madeitpx.dll bindings/java/src/main/resources/native/windows-arm64/
+          cp native-assets/linux-x64-gnu/libmadeitpx.so bindings/java/src/main/resources/native/linux-x64-gnu/
+          cp native-assets/linux-arm64-gnu/libmadeitpx.so bindings/java/src/main/resources/native/linux-arm64-gnu/
+          cp native-assets/darwin-x64/libmadeitpx.dylib bindings/java/src/main/resources/native/darwin-x64/
+          cp native-assets/darwin-arm64/libmadeitpx.dylib bindings/java/src/main/resources/native/darwin-arm64/
+          version="${RELEASE_TAG#v}"
+          mvn --batch-mode --file bindings/java/pom.xml versions:set \
+            -DnewVersion="$version" \
+            -DgenerateBackupPoms=false
+          mvn --batch-mode --file bindings/java/pom.xml deploy
+      - name: Attach Java JAR to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release upload "$RELEASE_TAG" "bindings/java/target/madeitpx-${RELEASE_TAG#v}.jar" --clobber
