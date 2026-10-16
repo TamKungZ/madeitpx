@@ -441,6 +441,9 @@ jobs:
     needs: [create-release, build-native]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -464,6 +467,14 @@ jobs:
           node-version: 24.x
           registry-url: https://registry.npmjs.org
           scope: "@madeit"
+      - name: Check npm version
+        run: |
+          required=11.5.1
+          current=$(npm --version)
+          if [ "$(printf '%s\n%s\n' "$required" "$current" | sort -V | head -n1)" != "$required" ]; then
+            echo "::error::npm $current is older than $required (required for trusted publishing)"
+            exit 1
+          fi
       - uses: actions/download-artifact@v4
         with:
           name: madeitpx-native-${{ matrix.rid }}
@@ -471,7 +482,6 @@ jobs:
       - name: Publish platform package
         shell: bash
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           RID: ${{ matrix.rid }}
           PACKAGE: ${{ matrix.package }}
           RELEASE_TAG: ${{ github.ref_name }}
@@ -496,6 +506,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -503,9 +514,16 @@ jobs:
           node-version: 24.x
           registry-url: https://registry.npmjs.org
           scope: "@madeit"
+      - name: Check npm version
+        run: |
+          required=11.5.1
+          current=$(npm --version)
+          if [ "$(printf '%s\n%s\n' "$required" "$current" | sort -V | head -n1)" != "$required" ]; then
+            echo "::error::npm $current is older than $required (required for trusted publishing)"
+            exit 1
+          fi
       - name: Publish Node.js package
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           node - <<'JS'
