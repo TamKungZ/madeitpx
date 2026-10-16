@@ -29,4 +29,4 @@ jobs:
       - run: dotnet build bindings/dotnet/src/MadeIt.PixelArt/MadeIt.PixelArt.csproj --configuration Release
       - run: dotnet run --project bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/MadeIt.PixelArt.SmokeTests.csproj --configuration Release
         env:
-          LD_LIBRARY_PATH: ${{ github.workspace }}/zig-out/bin
+          LD_LIBRARY_PATH: ${{ github.workspace }}/zig-out/lib

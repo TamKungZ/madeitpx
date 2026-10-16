@@ -100,7 +100,8 @@ def load_library():
         "darwin": "libmadeitpx.dylib",
     }
     filename = names.get(sys.platform, "libmadeitpx.so")
-    library = ctypes.CDLL(str(ROOT / "zig-out" / "bin" / filename))
+    library_dir = "bin" if sys.platform == "win32" else "lib"
+    library = ctypes.CDLL(str(ROOT / "zig-out" / library_dir / filename))
     library.madeitpx_options_init.argtypes = [ctypes.POINTER(Options)]
     library.madeitpx_options_init.restype = ctypes.c_int
     library.madeitpx_convert_rgba8.argtypes = [
