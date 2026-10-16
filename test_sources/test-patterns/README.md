@@ -18,3 +18,7 @@
 | 14_extreme_colors | pure black/white/primaries |
 | 15_odd_size_* | 1x1, 1x100, 100x1, 37x23, 1000x3, 7x513, 2x2, 255x257: bounds, stride, grid > source |
 | 16_alpha_checker_over_plasma | semi-transparent over complex colors |
+
+Run `python tests/render_patterns.py` after `zig build -Doptimize=ReleaseFast` to
+generate preset and sampling previews in `test_sources/output/`. Open
+`test_sources/output/index.html` to compare them.
