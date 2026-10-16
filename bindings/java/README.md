@@ -1,7 +1,7 @@
 # madeitpx
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/TamKungZ/madeitpx/main/assets/logo-wordmark.png" alt="madeitpx" width="240">
+  <img src="https://raw.githubusercontent.com/TamKungZ/madeitpx/main/assets/logo.png" alt="madeitpx" width="120">
 </p>
 
 Java binding for [madeitpx](https://github.com/TamKungZ/madeitpx).
