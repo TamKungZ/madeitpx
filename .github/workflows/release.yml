@@ -34,12 +34,10 @@ jobs:
             exit 1
           fi
 
-  create-release:
+  prepare-notes:
     needs: validate-tag
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Prepare release notes
@@ -66,21 +64,16 @@ jobs:
           if not notes:
               raise SystemExit(f"CHANGELOG.md section for {version} is empty")
 
-          Path(os.environ["RUNNER_TEMP"], "release-notes.md").write_text(
-              notes + "\n", encoding="utf-8"
-          )
+          output = Path("release-notes")
+          output.mkdir(exist_ok=True)
+          (output / "release-notes.md").write_text(notes + "\n", encoding="utf-8")
           PY
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" \
-              --verify-tag \
-              --title "madeitpx $RELEASE_TAG" \
-              --notes-file "$RUNNER_TEMP/release-notes.md"
-          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes/
+          if-no-files-found: error
+          retention-days: 7
 
   build-native:
     needs: validate-tag
@@ -129,7 +122,10 @@ jobs:
           zig build test
           zig build test -Doptimize=ReleaseFast -Dtarget="$TARGET"
           zig build -Doptimize=ReleaseFast -Dtarget="$TARGET"
-          test -f "$LIBRARY"
+          if [ ! -f "$LIBRARY" ]; then
+            echo "::error::Expected library not found: $LIBRARY"
+            exit 1
+          fi
           mkdir -p "native/$RID"
           cp "$LIBRARY" "native/$RID/"
       - uses: actions/upload-artifact@v4
@@ -138,6 +134,262 @@ jobs:
           path: native/
           if-no-files-found: error
           retention-days: 7
+
+  verify-packages:
+    needs: build-native
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: madeitpx-native-*
+          path: native-assets
+          merge-multiple: true
+      - name: Verify Node.js packages
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          for mapping in \
+            "windows-x64:win32-x64:madeitpx.dll" \
+            "windows-arm64:win32-arm64:madeitpx.dll" \
+            "linux-x64-gnu:linux-x64-gnu:libmadeitpx.so" \
+            "linux-arm64-gnu:linux-arm64-gnu:libmadeitpx.so" \
+            "darwin-x64:darwin-x64:libmadeitpx.dylib" \
+            "darwin-arm64:darwin-arm64:libmadeitpx.dylib"; do
+            IFS=: read -r rid package library <<< "$mapping"
+            package_dir="bindings/node/platforms/$package"
+            if [ ! -f "native-assets/$rid/$library" ]; then
+              echo "::error::Missing native-assets/$rid/$library"
+              exit 1
+            fi
+            cp "native-assets/$rid/$library" "$package_dir/"
+            cp LICENSE "$package_dir/LICENSE"
+            node -e "const fs=require('node:fs'); const p=process.argv[1]; const m=JSON.parse(fs.readFileSync(p,'utf8')); m.version=process.argv[2]; fs.writeFileSync(p, JSON.stringify(m, null, 2)+'\n');" "$package_dir/package.json" "$version"
+            output=$(npm pack --dry-run "$package_dir" 2>&1)
+            if ! grep -qF "$library" <<< "$output"; then
+              echo "::error::npm package $package does not contain $library"
+              echo "$output"
+              exit 1
+            fi
+          done
+          node - <<'JS'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const version = process.env.RELEASE_TAG.replace(/^v/, '');
+          const file = 'bindings/node/package.json';
+          const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+          const platformsDir = 'bindings/node/platforms';
+          const names = fs.readdirSync(platformsDir, { withFileTypes: true })
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => JSON.parse(fs.readFileSync(path.join(platformsDir, entry.name, 'package.json'), 'utf8')).name)
+            .sort();
+          const optional = Object.keys(manifest.optionalDependencies || {}).sort();
+          if (names.length !== 6) {
+            throw new Error(`Expected 6 platform packages, found ${names.length}`);
+          }
+          if (JSON.stringify(names) !== JSON.stringify(optional)) {
+            throw new Error(`optionalDependencies ${optional} do not match platform packages ${names}`);
+          }
+          manifest.version = version;
+          for (const name of optional) {
+            manifest.optionalDependencies[name] = version;
+          }
+          fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
+          JS
+          npm pack --dry-run bindings/node
+      - name: Verify NuGet package
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          project="bindings/dotnet/src/MadeIt.PixelArt"
+          for mapping in \
+            "windows-x64:win-x64:madeitpx.dll" \
+            "windows-arm64:win-arm64:madeitpx.dll" \
+            "linux-x64-gnu:linux-x64:libmadeitpx.so" \
+            "linux-arm64-gnu:linux-arm64:libmadeitpx.so" \
+            "darwin-x64:osx-x64:libmadeitpx.dylib" \
+            "darwin-arm64:osx-arm64:libmadeitpx.dylib"; do
+            IFS=: read -r source rid library <<< "$mapping"
+            destination="$project/runtimes/$rid/native"
+            mkdir -p "$destination"
+            cp "native-assets/$source/$library" "$destination/"
+          done
+          version="${RELEASE_TAG#v}"
+          dotnet pack "$project/MadeIt.PixelArt.csproj" \
+            --configuration Release \
+            --output artifacts \
+            -p:PackageVersion="$version"
+          shopt -s nullglob
+          packages=(artifacts/*.nupkg)
+          if [ "${#packages[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one .nupkg, found ${#packages[@]}"
+            exit 1
+          fi
+          listing=$(unzip -l "${packages[0]}")
+          for rid in win-x64 win-arm64 linux-x64 linux-arm64 osx-x64 osx-arm64; do
+            if ! grep -q "runtimes/$rid/native/" <<< "$listing"; then
+              echo "::error::NuGet package is missing native library for $rid"
+              exit 1
+            fi
+          done
+      - name: Verify Python distributions
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          for rid in windows-x64 windows-arm64 linux-x64-gnu linux-arm64-gnu darwin-x64 darwin-arm64; do
+            destination="bindings/python/src/madeitpx/native/$rid"
+            mkdir -p "$destination"
+            cp "native-assets/$rid/"* "$destination/"
+          done
+          sed -i "s/^__version__ = .*/__version__ = \"$version\"/" bindings/python/src/madeitpx/__init__.py
+          if ! grep -q "^__version__ = \"$version\"$" bindings/python/src/madeitpx/__init__.py; then
+            echo "::error::__version__ was not updated"
+            exit 1
+          fi
+          python -m pip install build twine
+          python -m build bindings/python --outdir dist
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheels = list(Path("dist").glob("*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"Expected one Python wheel, found {len(wheels)}")
+          expected = {
+              "madeitpx/native/windows-x64/madeitpx.dll",
+              "madeitpx/native/windows-arm64/madeitpx.dll",
+              "madeitpx/native/linux-x64-gnu/libmadeitpx.so",
+              "madeitpx/native/linux-arm64-gnu/libmadeitpx.so",
+              "madeitpx/native/darwin-x64/libmadeitpx.dylib",
+              "madeitpx/native/darwin-arm64/libmadeitpx.dylib",
+          }
+          with ZipFile(wheels[0]) as archive:
+              missing = expected.difference(archive.namelist())
+          if missing:
+              raise SystemExit(f"Wheel is missing native libraries: {sorted(missing)}")
+          PY
+          twine check dist/*
+          python -m pip install dist/*.whl
+          python -c "import sys, madeitpx; assert madeitpx.__version__ == sys.argv[1], madeitpx.__version__" "$version"
+      - name: Verify Rust crate
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          for rid in windows-x64 windows-arm64 linux-x64-gnu linux-arm64-gnu darwin-x64 darwin-arm64; do
+            mkdir -p "bindings/rust/native/$rid"
+            cp "native-assets/$rid/"* "bindings/rust/native/$rid/"
+          done
+          version="${RELEASE_TAG#v}"
+          sed -i '0,/^version = .*/s//version = "'"$version"'"/' bindings/rust/Cargo.toml
+          if ! grep -q "^version = \"$version\"$" bindings/rust/Cargo.toml; then
+            echo "::error::Cargo.toml version was not updated"
+            exit 1
+          fi
+          cargo update --manifest-path bindings/rust/Cargo.toml --workspace
+          listing=$(cargo package --manifest-path bindings/rust/Cargo.toml --allow-dirty --list)
+          for rid in windows-x64 windows-arm64 linux-x64-gnu linux-arm64-gnu darwin-x64 darwin-arm64; do
+            if ! grep -q "native/$rid/" <<< "$listing"; then
+              echo "::error::Crate is missing native library for $rid"
+              exit 1
+            fi
+          done
+          cargo package --manifest-path bindings/rust/Cargo.toml --allow-dirty \
+            --target-dir "$RUNNER_TEMP/cargo-package"
+          crate=$(ls "$RUNNER_TEMP"/cargo-package/package/*.crate)
+          size=$(stat -c %s "$crate")
+          if [ "$size" -gt 10485760 ]; then
+            echo "::error::Crate is $size bytes, above the crates.io 10 MiB limit"
+            exit 1
+          fi
+      - name: Verify Java artifact
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          for mapping in \
+            "windows-x64:madeitpx.dll" \
+            "windows-arm64:madeitpx.dll" \
+            "linux-x64-gnu:libmadeitpx.so" \
+            "linux-arm64-gnu:libmadeitpx.so" \
+            "darwin-x64:libmadeitpx.dylib" \
+            "darwin-arm64:libmadeitpx.dylib"; do
+            IFS=: read -r rid library <<< "$mapping"
+            destination="bindings/java/src/main/resources/native/$rid"
+            mkdir -p "$destination"
+            cp "native-assets/$rid/$library" "$destination/"
+          done
+          version="${RELEASE_TAG#v}"
+          mvn --batch-mode --file bindings/java/pom.xml versions:set \
+            -DnewVersion="$version" \
+            -DgenerateBackupPoms=false
+          mvn --batch-mode --file bindings/java/pom.xml package -Dgpg.skip=true
+          jar="bindings/java/target/madeitpx-$version.jar"
+          if [ ! -f "$jar" ]; then
+            echo "::error::$jar not found"
+            ls -la bindings/java/target
+            exit 1
+          fi
+          listing=$(unzip -l "$jar")
+          for rid in windows-x64 windows-arm64 linux-x64-gnu linux-arm64-gnu darwin-x64 darwin-arm64; do
+            if ! grep -q "native/$rid/" <<< "$listing"; then
+              echo "::error::JAR is missing native library for $rid"
+              exit 1
+            fi
+          done
+
+  approve:
+    needs: [prepare-notes, build-native, verify-packages]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: release
+    steps:
+      - run: echo "Release ${{ github.ref_name }} approved"
+
+  create-release:
+    needs: approve
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --verify-tag \
+              --title "madeitpx $RELEASE_TAG" \
+              --notes-file release-notes/release-notes.md
+          fi
 
   attach-native:
     needs: [create-release, build-native]
@@ -230,7 +482,7 @@ jobs:
           cp "$library" "$package_dir/"
           cp LICENSE "$package_dir/LICENSE"
           version="${RELEASE_TAG#v}"
-          node -e "const fs=require('node:fs'); const p='$package_dir/package.json'; const m=JSON.parse(fs.readFileSync(p)); m.version='$version'; fs.writeFileSync(p, JSON.stringify(m, null, 2)+'\n');"
+          node -e "const fs=require('node:fs'); const p=process.argv[1]; const m=JSON.parse(fs.readFileSync(p,'utf8')); m.version=process.argv[2]; fs.writeFileSync(p, JSON.stringify(m, null, 2)+'\n');" "$package_dir/package.json" "$version"
           name=$(node -p "require('./$package_dir/package.json').name")
           if npm view "$name@$version" version >/dev/null 2>&1; then
             echo "$name@$version already published, skipping"
@@ -320,8 +572,9 @@ jobs:
             echo "::error::Expected exactly one .nupkg, found ${#packages[@]}"
             exit 1
           fi
+          listing=$(unzip -l "${packages[0]}")
           for rid in win-x64 win-arm64 linux-x64 linux-arm64 osx-x64 osx-arm64; do
-            if ! unzip -l "${packages[0]}" | grep -q "runtimes/$rid/native/"; then
+            if ! grep -q "runtimes/$rid/native/" <<< "$listing"; then
               echo "::error::NuGet package is missing native library for $rid"
               exit 1
             fi
@@ -455,38 +708,84 @@ jobs:
           pattern: madeitpx-native-*
           path: native-assets
           merge-multiple: true
-      - name: Deploy Java artifact to Maven Central
+      - name: Build Java artifact
         env:
-          MAVEN_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
-          MAVEN_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           MAVEN_GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           printf '%s' "$MAVEN_GPG_PRIVATE_KEY" | gpg --batch --import
-          for rid in windows-x64 windows-arm64 linux-x64-gnu linux-arm64-gnu darwin-x64 darwin-arm64; do
-            mkdir -p "bindings/java/src/main/resources/native/$rid"
+          for mapping in \
+            "windows-x64:madeitpx.dll" \
+            "windows-arm64:madeitpx.dll" \
+            "linux-x64-gnu:libmadeitpx.so" \
+            "linux-arm64-gnu:libmadeitpx.so" \
+            "darwin-x64:libmadeitpx.dylib" \
+            "darwin-arm64:libmadeitpx.dylib"; do
+            IFS=: read -r rid library <<< "$mapping"
+            destination="bindings/java/src/main/resources/native/$rid"
+            mkdir -p "$destination"
+            cp "native-assets/$rid/$library" "$destination/"
           done
-          cp native-assets/windows-x64/madeitpx.dll bindings/java/src/main/resources/native/windows-x64/
-          cp native-assets/windows-arm64/madeitpx.dll bindings/java/src/main/resources/native/windows-arm64/
-          cp native-assets/linux-x64-gnu/libmadeitpx.so bindings/java/src/main/resources/native/linux-x64-gnu/
-          cp native-assets/linux-arm64-gnu/libmadeitpx.so bindings/java/src/main/resources/native/linux-arm64-gnu/
-          cp native-assets/darwin-x64/libmadeitpx.dylib bindings/java/src/main/resources/native/darwin-x64/
-          cp native-assets/darwin-arm64/libmadeitpx.dylib bindings/java/src/main/resources/native/darwin-arm64/
           version="${RELEASE_TAG#v}"
           mvn --batch-mode --file bindings/java/pom.xml versions:set \
             -DnewVersion="$version" \
             -DgenerateBackupPoms=false
-          mvn --batch-mode --file bindings/java/pom.xml deploy
-      - name: Attach Java JAR to GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          jar="bindings/java/target/madeitpx-${RELEASE_TAG#v}.jar"
+          mvn --batch-mode --file bindings/java/pom.xml package
+          jar="bindings/java/target/madeitpx-$version.jar"
           if [ ! -f "$jar" ]; then
             echo "::error::$jar not found"
             ls -la bindings/java/target
             exit 1
           fi
-          gh release upload "$RELEASE_TAG" "$jar" --clobber
+      - name: Attach Java JAR to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release upload "$RELEASE_TAG" "bindings/java/target/madeitpx-${RELEASE_TAG#v}.jar" --clobber
+      - name: Deploy Java artifact to Maven Central
+        env:
+          MAVEN_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: mvn --batch-mode --file bindings/java/pom.xml deploy -DskipTests
+
+  summary:
+    if: always()
+    needs:
+      - validate-tag
+      - prepare-notes
+      - build-native
+      - verify-packages
+      - approve
+      - create-release
+      - attach-native
+      - publish-node-platforms
+      - publish-node
+      - publish-dotnet
+      - publish-python
+      - publish-rust
+      - publish-java
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Write job summary
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          needs = json.loads(os.environ["NEEDS"])
+          lines = [
+              f"## Release {os.environ['GITHUB_REF_NAME']}",
+              "",
+              "| Job | Result |",
+              "| --- | --- |",
+          ]
+          for name, data in needs.items():
+              lines.append(f"| {name} | {data['result']} |")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("\n".join(lines) + "\n")
+          PY
