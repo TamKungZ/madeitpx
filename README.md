@@ -1,3 +1,16 @@
+<p align="center">
+  <img
+    src="assets/logo-wordmark.png#gh-light-mode-only"
+    alt="Logo"
+    width="320"
+  />
+  <img
+    src="assets/logo-wordmark-dark.png#gh-dark-mode-only"
+    alt="Logo"
+    width="320"
+  />
+</p>
+
 # madeitpx
 
 `madeitpx` is a native image-processing library written in Zig with a C ABI. It
