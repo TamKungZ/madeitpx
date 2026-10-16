@@ -1,34 +1,31 @@
 # madeitpx
 
-Native image-processing library written in Zig with a C ABI.
+`madeitpx` is a native image-processing library written in Zig with a C ABI. It
+converts RGBA8 images to a caller-selected pixel grid and groups colors into a
+limited palette.
 
-The current API converts RGBA8 buffers to a caller-selected pixel grid, groups
-colors into a limited palette, and returns opaque RGBA8 pixels. It provides
-balanced, detail, and bold presets, a configurable palette size, a background
-color for transparent input, and area or nearest sampling.
+## Features
 
-Input is top-to-bottom, with an explicit byte stride. Output is tightly packed
-RGBA8. `madeitpx_options_init` supplies the balanced preset (32 colors), nearest
-sampling, and a black background. Set `preset` to `MADEITPX_PRESET_DETAIL` for
-64 colors or `MADEITPX_PRESET_BOLD` for 16; `palette_colors` overrides those
-limits with a value from 2 through 64. `background_rgb` is `0xRRGGBB`.
-`cluster_cleanup` defaults to 1 and replaces isolated, similar-color pixels
-with a dominant neighboring color while retaining high-contrast details.
-Transparent input is composited onto that background; output alpha is 255.
-The caller owns both buffers; they must not overlap.
+- Balanced, detail, and bold presets, with a configurable palette of 2-64 colors.
+- Nearest-neighbor or area sampling.
+- Transparent input composited onto a configurable background; output is opaque
+  RGBA8.
+- Optional cleanup of isolated pixels with similar-colored neighbors.
 
-```sh
-zig build
-zig build test
-zig build -Doptimize=ReleaseFast
-python tests/test_patterns.py
-```
+## C API
 
-The pattern test runs the PNG corpus in `test_sources/test-patterns`.
-Generate previews with `python tests/render_patterns.py`. Outputs are in
-`test_sources/output/`; this README includes the generated comparisons below.
+The public interface is declared in [`include/madeitpx.h`](include/madeitpx.h).
+Input pixels are top-to-bottom RGBA8 with an explicit byte stride; output is
+tightly packed RGBA8. Initialize `madeitpx_options` with
+`madeitpx_options_init` before setting options. The caller owns the input and
+output buffers, which must not overlap.
 
-The public header is in `include/madeitpx.h`; build outputs are in `zig-out/`.
+## Test images
+
+The [`test_sources/test-patterns`](test_sources/test-patterns) directory contains
+the image corpus used to check sampling, palettes, alpha handling, cleanup, and
+image sizes. The comparisons below show each source with every preset and
+sampling mode.
 
 ## Test-source results
 
