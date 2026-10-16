@@ -5,3 +5,13 @@ zig-pkg/
 ref/
 
 __pycache__/
+
+# .NET build outputs
+**/bin/
+**/obj/
+**/TestResults/
+.vs/
+*.user
+*.suo
+*.nupkg
+*.snupkg

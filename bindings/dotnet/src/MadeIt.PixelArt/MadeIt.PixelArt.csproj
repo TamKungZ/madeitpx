@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net462;netstandard2.0;netstandard2.1;net10.0</TargetFrameworks>
+    <PackageId>MadeIt.PixelArt</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>TamKungZ_ &lt;dev@tamkungz.me&gt;</Authors>
+    <Copyright>Copyright (c) 2026 TamKungZ_</Copyright>
+    <Description>Managed .NET binding for the madeitpx pixel-art image conversion library.</Description>
+    <PackageLicenseExpression>MPL-2.0</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <RepositoryUrl>https://github.com/TamKungZ/madeitpx</RepositoryUrl>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <LangVersion>8.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>MadeIt.PixelArt</AssemblyName>
+    <RootNamespace>MadeIt.PixelArt</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

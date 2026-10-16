@@ -20,6 +20,13 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
       - run: zig build
       - run: zig build test
       - run: python3 tests/test_patterns.py
+      - run: dotnet build bindings/dotnet/src/MadeIt.PixelArt/MadeIt.PixelArt.csproj --configuration Release
+      - run: dotnet run --project bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/MadeIt.PixelArt.SmokeTests.csproj --configuration Release
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/zig-out/bin

@@ -51,6 +51,13 @@ The caller owns both buffers, and they must not overlap. The API reports
 invalid arguments, undersized buffers, size overflow, and allocation failure
 through `madeitpx_status`.
 
+## .NET binding
+
+The [`MadeIt.PixelArt` binding](bindings/dotnet/src/MadeIt.PixelArt) targets
+.NET Framework 4.6.2, .NET Standard 2.0, .NET Standard 2.1, and .NET 10.0. It
+requires a separately built native `madeitpx` shared library for the current
+platform and architecture.
+
 ## Validation images
 
 The [`test_sources/test-patterns`](test_sources/test-patterns) directory
