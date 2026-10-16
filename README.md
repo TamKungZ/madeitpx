@@ -4,6 +4,8 @@
 converts RGBA8 images to a caller-selected pixel grid and groups colors into a
 limited palette.
 
+Licensed under the [Mozilla Public License 2.0](LICENSE).
+
 ## Features
 
 - Balanced, detail, and bold presets, with a configurable palette of 2-64 colors.
