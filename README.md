@@ -21,6 +21,14 @@ and encoding are handled by the calling application.
 
 Licensed under the [Mozilla Public License 2.0](LICENSE).
 
+<p align="center">
+  <img
+    src="test_sources/output/preview.png"
+    alt="Preview"
+    width="60%"
+  />
+</p>
+
 ## Conversion
 
 The conversion has three stages:
