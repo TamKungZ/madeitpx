@@ -79,6 +79,12 @@ The [`MadeIt.PixelArt` binding](bindings/dotnet/src/MadeIt.PixelArt) targets
 requires a separately built native `madeitpx` shared library for the current
 platform and architecture.
 
+## Node.js binding
+
+The [`@madeit/pixelart` package](bindings/node) wraps the native C ABI and
+requires a separately built `madeitpx` shared library for the current platform
+and architecture.
+
 ## Validation images
 
 The [`test_sources/test-patterns`](test_sources/test-patterns) directory

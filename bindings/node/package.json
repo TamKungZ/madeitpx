@@ -1,0 +1,36 @@
+{
+  "name": "@madeit/pixelart",
+  "version": "0.1.0",
+  "description": "Node.js binding for the madeitpx pixel-art image conversion library",
+  "license": "MPL-2.0",
+  "author": "TamKungZ_ <dev@tamkungz.me>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TamKungZ/madeitpx.git",
+    "directory": "bindings/node"
+  },
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "require": "./index.js",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "koffi": "^3.3.3"
+  }
+}

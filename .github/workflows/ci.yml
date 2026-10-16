@@ -23,9 +23,16 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
       - run: zig build
       - run: zig build test
       - run: python3 tests/test_patterns.py
+      - run: npm ci --prefix bindings/node
+      - run: npm test --prefix bindings/node
+        env:
+          MADEITPX_LIBRARY_PATH: ${{ github.workspace }}/zig-out/lib/libmadeitpx.so
       - run: dotnet build bindings/dotnet/src/MadeIt.PixelArt/MadeIt.PixelArt.csproj --configuration Release
       - run: dotnet run --project bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/MadeIt.PixelArt.SmokeTests.csproj --configuration Release
         env:
