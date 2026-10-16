@@ -358,3 +358,77 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: gh release upload "$RELEASE_TAG" dist/* --clobber
+
+  build-rust-native:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            rid: windows-x64
+            target: x86_64-windows
+            library: zig-out/bin/madeitpx.dll
+          - runner: windows-11-arm
+            rid: windows-arm64
+            target: aarch64-windows
+            library: zig-out/bin/madeitpx.dll
+          - runner: ubuntu-24.04
+            rid: linux-x64-gnu
+            target: x86_64-linux-gnu.2.17
+            library: zig-out/lib/libmadeitpx.so
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64-gnu
+            target: aarch64-linux-gnu.2.17
+            library: zig-out/lib/libmadeitpx.so
+          - runner: macos-15-intel
+            rid: darwin-x64
+            target: x86_64-macos
+            library: zig-out/lib/libmadeitpx.dylib
+          - runner: macos-15
+            rid: darwin-arm64
+            target: aarch64-macos
+            library: zig-out/lib/libmadeitpx.dylib
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: Build native library
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          LIBRARY: ${{ matrix.library }}
+          RID: ${{ matrix.rid }}
+        run: |
+          zig build -Doptimize=ReleaseFast -Dtarget="$TARGET"
+          destination="rust-native/native/$RID"
+          mkdir -p "$destination"
+          cp "$LIBRARY" "$destination/"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: madeitpx-rust-${{ matrix.rid }}
+          path: rust-native/
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-rust:
+    needs: [publish, build-rust-native]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: madeitpx-rust-*
+          path: bindings/rust
+          merge-multiple: true
+      - name: Publish crate
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          sed -i "s/^version = .*/version = \"$version\"/" bindings/rust/Cargo.toml
+          cargo update --manifest-path bindings/rust/Cargo.toml --workspace
+          cargo publish --manifest-path bindings/rust/Cargo.toml

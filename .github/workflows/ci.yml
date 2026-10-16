@@ -52,16 +52,22 @@ jobs:
         include:
           - runner: windows-latest
             target: x86_64-windows
+            library: zig-out/bin/madeitpx.dll
           - runner: windows-11-arm
             target: aarch64-windows
+            library: zig-out/bin/madeitpx.dll
           - runner: ubuntu-24.04
             target: x86_64-linux-gnu.2.17
+            library: zig-out/lib/libmadeitpx.so
           - runner: ubuntu-24.04-arm
             target: aarch64-linux-gnu.2.17
+            library: zig-out/lib/libmadeitpx.so
           - runner: macos-15-intel
             target: x86_64-macos
+            library: zig-out/lib/libmadeitpx.dylib
           - runner: macos-15
             target: aarch64-macos
+            library: zig-out/lib/libmadeitpx.dylib
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     steps:
@@ -72,6 +78,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -93,6 +100,9 @@ jobs:
           cp "$library" "$destination/"
       - run: python -m pip install --editable bindings/python
       - run: python -m unittest discover --start-directory bindings/python/tests --verbose
+      - run: cargo test --manifest-path bindings/rust/Cargo.toml
+        env:
+          MADEITPX_LIBRARY_PATH: ${{ github.workspace }}/${{ matrix.library }}
       - run: dotnet build bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/MadeIt.PixelArt.SmokeTests.csproj --configuration Release
       - name: Stage native library beside smoke test
         shell: bash

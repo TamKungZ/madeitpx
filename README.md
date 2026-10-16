@@ -90,6 +90,11 @@ and architecture.
 The [`madeitpx` package](bindings/python) installs with pip and includes native
 libraries for Windows, Linux (glibc), and macOS on x64 and ARM64.
 
+## Rust binding
+
+The [`madeitpx` crate](bindings/rust) wraps the native C ABI and includes
+libraries for Windows, Linux (glibc), and macOS on x64 and ARM64.
+
 ## Validation images
 
 The [`test_sources/test-patterns`](test_sources/test-patterns) directory
