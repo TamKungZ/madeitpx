@@ -1,12 +1,17 @@
 import sys
 from pathlib import Path
 
-from render_patterns import OUTPUT_DIR, write_png
-from test_patterns import PATTERN_DIR, PatternTests, load_library, read_png
+from render_patterns import (
+    OUTPUT_DIR,
+    PREVIEW_SIZE,
+    main as render_patterns_main,
+    write_png,
+)
+from test_patterns import PATTERN_DIR, read_png
 
 
-GRID = 48
-SCALE = 4
+GRID = PREVIEW_SIZE
+SCALE = 2
 SHOWCASE = [
     ("12_scene_sprite", "SCENE SPRITE"),
     ("13_plasma_photo_like", "PLASMA PHOTO"),
@@ -18,6 +23,7 @@ COLUMNS = [
     ("DETAIL", 1, 64),
 ]
 SAMPLE_MODE = 0
+SAMPLE_NAME = {0: "area", 1: "nearest"}
 
 S = GRID * SCALE
 MARGIN, GAP = 32, 16
@@ -166,8 +172,7 @@ def palette_of(pixels):
 
 def main():
     out_path = Path(sys.argv[1]) if len(sys.argv) > 1 else OUTPUT_DIR / "preview.png"
-    renderer = PatternTests()
-    renderer.library = load_library()
+    render_patterns_main()
 
     cols = 1 + len(COLUMNS)
     pal_h = 22 if SHOW_PALETTE else 0
@@ -193,13 +198,19 @@ def main():
     for r, (stem, _caption) in enumerate(SHOWCASE):
         path = PATTERN_DIR / f"{stem}.png"
         sw, sh, pixels = read_png(path)
-        image = (sw, sh, pixels, path.name)
         y = top + r * (cell_h + GAP)
         cells = [display_source(sw, sh, pixels)]
-        for _, preset, _ in COLUMNS:
-            cells.append(
-                renderer.convert(image, GRID, GRID, preset=preset, sample_mode=SAMPLE_MODE)
+        for name, _, _ in COLUMNS:
+            preview_path = OUTPUT_DIR / (
+                f"{stem}--{name.lower()}-{SAMPLE_NAME[SAMPLE_MODE]}.png"
             )
+            preview_width, preview_height, preview_pixels = read_png(preview_path)
+            if (preview_width, preview_height) != (GRID, GRID):
+                raise ValueError(
+                    f"{preview_path.name}: expected a {GRID}x{GRID} preview, "
+                    f"got {preview_width}x{preview_height}"
+                )
+            cells.append(preview_pixels)
         for c, data in enumerate(cells):
             x = col_x(c)
             cv.rect(x - 1, y - 1, S + 2, S + 2, BORDER)
