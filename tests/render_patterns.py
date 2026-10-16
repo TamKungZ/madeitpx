@@ -9,7 +9,7 @@ from test_patterns import PATTERN_DIR, PatternTests, PRESET_LIMITS, load_library
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = ROOT / "test_sources" / "output"
 PRESET_NAMES = {0: "balanced", 1: "detail", 2: "bold"}
-SAMPLE_NAMES = {0: "area", 1: "nearest"}
+SAMPLE_NAMES = {1: "nearest", 0: "area"}
 PREVIEW_SIZE = 128
 
 
@@ -39,6 +39,13 @@ def main():
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     cards = []
+    markdown_sections = [
+        "# Pixel-art conversion results",
+        "",
+        "Generated with `python tests/render_patterns.py` from the official test-pattern corpus.",
+        f"Square patterns use a {PREVIEW_SIZE}x{PREVIEW_SIZE} output grid; odd-size patterns use their source grid.",
+        "",
+    ]
     pattern_paths = sorted(PATTERN_DIR.glob("*.png"))
     for path in pattern_paths:
         width, height, pixels = read_png(path)
@@ -48,7 +55,20 @@ def main():
         else:
             target_width, target_height = PREVIEW_SIZE, PREVIEW_SIZE
         cards.append(f"<h2>{html.escape(path.name)}</h2><div class=\"grid\">")
+        markdown_sections.extend(
+            [
+                "<details>",
+                f"<summary>{path.name}</summary>",
+                "",
+                "<table>",
+                "<thead><tr><th>Preset</th><th>Nearest</th><th>Area</th></tr></thead>",
+                "<tbody>",
+            ]
+        )
         for preset, limit in PRESET_LIMITS.items():
+            markdown_sections.append(
+                f"<tr><th>{PRESET_NAMES[preset]} ({limit} colors)</th>"
+            )
             for sample_mode, sample_name in SAMPLE_NAMES.items():
                 label = f"{PRESET_NAMES[preset]} / {sample_name} / max {limit} colors"
                 filename = f"{path.stem}--{PRESET_NAMES[preset]}-{sample_name}.png"
@@ -65,6 +85,12 @@ def main():
                     f'<a href="{html.escape(filename)}"><img src="{html.escape(filename)}" '
                     f'alt="{html.escape(label)}"></a></figure>'
                 )
+                markdown_sections.append(
+                    f'<td><a href="{filename}"><img src="{filename}" '
+                    f'alt="{label}" width="160"></a></td>'
+                )
+            markdown_sections.append("</tr>")
+        markdown_sections.extend(["</tbody>", "</table>", "", "</details>", ""])
         cards.append("</div>")
 
     gallery = (
@@ -83,6 +109,10 @@ def main():
         + "</body></html>"
     )
     (OUTPUT_DIR / "index.html").write_text(gallery, encoding="utf-8")
+    (OUTPUT_DIR / "results.md").write_text(
+        "\n".join(markdown_sections) + "\n",
+        encoding="utf-8",
+    )
     print(f"Rendered {len(pattern_paths)} patterns to {OUTPUT_DIR}")
     print(f"Generated {len(pattern_paths) * len(PRESET_NAMES) * len(SAMPLE_NAMES)} PNG previews.")
 

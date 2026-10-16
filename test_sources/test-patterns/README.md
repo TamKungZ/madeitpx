@@ -20,5 +20,6 @@
 | 16_alpha_checker_over_plasma | semi-transparent over complex colors |
 
 Run `python tests/render_patterns.py` after `zig build -Doptimize=ReleaseFast` to
-generate preset and sampling previews in `test_sources/output/`. Open
-`test_sources/output/index.html` to compare them.
+generate preset and sampling previews in `test_sources/output/`. Compare the
+results in [`results.md`](../output/results.md) or open
+[`index.html`](../output/index.html).
