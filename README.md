@@ -20,6 +20,10 @@ The caller owns both buffers; they must not overlap.
 ```sh
 zig build
 zig build test
+zig build -Doptimize=ReleaseFast
+python tests/test_patterns.py
 ```
+
+The pattern test runs the PNG corpus in `test_sources/test-patterns`.
 
 The public header is in `include/madeitpx.h`; build outputs are in `zig-out/`.

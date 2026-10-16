@@ -247,6 +247,35 @@ fn nearestColor(pixels: [*]const u8, index: usize, palette: []const [3]u8) usize
 fn buildPalette(pixels: [*]u8, pixel_count: usize, limit: usize, indices: []usize) Palette {
     var buckets: [max_palette_colors]PaletteBucket = undefined;
     var palette: [max_palette_colors][3]u8 = undefined;
+    var unique_colors: [max_palette_colors][3]u8 = undefined;
+    var unique_count: usize = 0;
+    var exceeds_limit = false;
+
+    for (0..pixel_count) |pixel_index| {
+        const color = [3]u8{
+            pixelChannel(pixels, pixel_index, 0),
+            pixelChannel(pixels, pixel_index, 1),
+            pixelChannel(pixels, pixel_index, 2),
+        };
+        var found = false;
+        for (unique_colors[0..unique_count]) |known_color| {
+            if (std.mem.eql(u8, &known_color, &color)) {
+                found = true;
+                break;
+            }
+        }
+        if (found) continue;
+        if (unique_count == limit) {
+            exceeds_limit = true;
+            break;
+        }
+        unique_colors[unique_count] = color;
+        unique_count += 1;
+    }
+    if (!exceeds_limit) {
+        return .{ .colors = unique_colors, .len = unique_count };
+    }
+
     var bucket_count: usize = 1;
     buckets[0] = .{ .start = 0, .len = pixel_count };
     for (indices, 0..) |*index, value| index.* = value;
