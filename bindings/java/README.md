@@ -1,0 +1,31 @@
+# madeitpx
+
+Java binding for [madeitpx](https://github.com/TamKungZ/madeitpx).
+
+```xml
+<dependency>
+  <groupId>me.tamkungz</groupId>
+  <artifactId>madeitpx</artifactId>
+  <version>0.1.0</version>
+</dependency>
+```
+
+```java
+import me.tamkungz.madeitpx.MadeItPx;
+
+byte[] output = MadeItPx.convert(rgba, 2, 2, 1, 1);
+```
+
+The input and output are tightly packed RGBA8 byte arrays. The overload with
+`inputStride` supports padded input rows; conversion settings are provided with
+`MadeItPx.Options`.
+
+Release JARs include native libraries for supported Windows, Linux (glibc), and
+macOS x64 and ARM64 platforms. The binding extracts the matching library when
+first used. For local builds or a custom library, set the
+`madeitpx.library.path` system property or `MADEITPX_LIBRARY_PATH` environment
+variable to its path. A JAR built from source does not include native binaries
+unless they are staged under `src/main/resources/native` before packaging.
+
+The release workflow attaches the JAR to GitHub Releases. Maven Central
+publishing is not configured.

@@ -130,3 +130,44 @@ jobs:
           fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
           JS
           npm publish bindings/node --access public
+
+  package-java:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Build native libraries and package Java artifact
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          mvn --batch-mode --file bindings/java/pom.xml versions:set \
+            -DnewVersion="$version" \
+            -DgenerateBackupPoms=false
+          while IFS=' ' read -r target platform library; do
+            zig build -Doptimize=ReleaseFast -Dtarget="$target"
+            destination="bindings/java/src/main/resources/native/$platform"
+            mkdir -p "$destination"
+            cp "$library" "$destination/"
+          done <<'TARGETS'
+          x86_64-windows windows-x64 zig-out/bin/madeitpx.dll
+          aarch64-windows windows-arm64 zig-out/bin/madeitpx.dll
+          x86_64-linux-gnu.2.17 linux-x64-gnu zig-out/lib/libmadeitpx.so
+          aarch64-linux-gnu.2.17 linux-arm64-gnu zig-out/lib/libmadeitpx.so
+          x86_64-macos darwin-x64 zig-out/lib/libmadeitpx.dylib
+          aarch64-macos darwin-arm64 zig-out/lib/libmadeitpx.dylib
+          TARGETS
+          mvn --batch-mode --file bindings/java/pom.xml package
+      - name: Attach Java package to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release upload "$RELEASE_TAG" "bindings/java/target/madeitpx-${RELEASE_TAG#v}.jar" --clobber

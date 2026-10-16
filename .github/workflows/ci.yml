@@ -26,9 +26,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24.x
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
       - run: zig build
       - run: zig build test
       - run: python3 tests/test_patterns.py
+      - run: mvn --batch-mode --file bindings/java/pom.xml test
+        env:
+          MADEITPX_LIBRARY_PATH: ${{ github.workspace }}/zig-out/lib/libmadeitpx.so
       - run: npm ci --prefix bindings/node
       - run: npm test --prefix bindings/node
         env:
