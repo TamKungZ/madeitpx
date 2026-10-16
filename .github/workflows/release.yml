@@ -1,0 +1,47 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create release from changelog
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          tag = os.environ["RELEASE_TAG"]
+          version = tag.removeprefix("v")
+          changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
+          heading = re.compile(rf"^## \[{re.escape(version)}\](?: .*)?$", re.MULTILINE)
+          match = heading.search(changelog)
+          if match is None:
+              raise SystemExit(f"CHANGELOG.md has no section for {version}")
+
+          section_start = match.end()
+          next_section = re.search(r"^## ", changelog[section_start:], re.MULTILINE)
+          section_end = section_start + next_section.start() if next_section else len(changelog)
+          notes = changelog[section_start:section_end].strip()
+          if not notes:
+              raise SystemExit(f"CHANGELOG.md section for {version} is empty")
+
+          notes_path = Path(os.environ["RUNNER_TEMP"]) / "release-notes.md"
+          notes_path.write_text(notes + "\n", encoding="utf-8")
+          print(f"Prepared release notes for {tag}")
+          PY
+          gh release create "$RELEASE_TAG" \
+            --title "madeitpx $RELEASE_TAG" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
