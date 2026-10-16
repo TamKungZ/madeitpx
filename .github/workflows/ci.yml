@@ -20,9 +20,6 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
       - uses: actions/setup-node@v4
         with:
           node-version: 24.x
@@ -40,7 +37,45 @@ jobs:
       - run: npm test --prefix bindings/node
         env:
           MADEITPX_LIBRARY_PATH: ${{ github.workspace }}/zig-out/lib/libmadeitpx.so
-      - run: dotnet build bindings/dotnet/src/MadeIt.PixelArt/MadeIt.PixelArt.csproj --configuration Release
-      - run: dotnet run --project bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/MadeIt.PixelArt.SmokeTests.csproj --configuration Release
-        env:
-          LD_LIBRARY_PATH: ${{ github.workspace }}/zig-out/lib
+
+  dotnet:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            target: x86_64-windows
+          - runner: windows-11-arm
+            target: aarch64-windows
+          - runner: ubuntu-24.04
+            target: x86_64-linux-gnu.2.17
+          - runner: ubuntu-24.04-arm
+            target: aarch64-linux-gnu.2.17
+          - runner: macos-15-intel
+            target: x86_64-macos
+          - runner: macos-15
+            target: aarch64-macos
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }}
+      - run: dotnet build bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/MadeIt.PixelArt.SmokeTests.csproj --configuration Release
+      - name: Stage native library beside smoke test
+        shell: bash
+        run: |
+          output="bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/bin/Release/net10.0"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp zig-out/bin/madeitpx.dll "$output/"
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            cp zig-out/lib/libmadeitpx.dylib "$output/"
+          else
+            cp zig-out/lib/libmadeitpx.so "$output/"
+          fi
+      - run: dotnet run --project bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/MadeIt.PixelArt.SmokeTests.csproj --configuration Release --no-build

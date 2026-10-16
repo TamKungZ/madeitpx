@@ -171,3 +171,83 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: gh release upload "$RELEASE_TAG" "bindings/java/target/madeitpx-${RELEASE_TAG#v}.jar" --clobber
+
+  build-dotnet-native:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            rid: win-x64
+            target: x86_64-windows
+            library: zig-out/bin/madeitpx.dll
+          - runner: windows-11-arm
+            rid: win-arm64
+            target: aarch64-windows
+            library: zig-out/bin/madeitpx.dll
+          - runner: ubuntu-24.04
+            rid: linux-x64
+            target: x86_64-linux-gnu.2.17
+            library: zig-out/lib/libmadeitpx.so
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+            target: aarch64-linux-gnu.2.17
+            library: zig-out/lib/libmadeitpx.so
+          - runner: macos-15-intel
+            rid: osx-x64
+            target: x86_64-macos
+            library: zig-out/lib/libmadeitpx.dylib
+          - runner: macos-15
+            rid: osx-arm64
+            target: aarch64-macos
+            library: zig-out/lib/libmadeitpx.dylib
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: Build native library
+        env:
+          TARGET: ${{ matrix.target }}
+          LIBRARY: ${{ matrix.library }}
+          RID: ${{ matrix.rid }}
+        run: |
+          zig build -Doptimize=ReleaseFast -Dtarget="$TARGET"
+          destination="dotnet-native/runtimes/$RID/native"
+          mkdir -p "$destination"
+          cp "$LIBRARY" "$destination/"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: madeitpx-${{ matrix.rid }}
+          path: dotnet-native/
+          if-no-files-found: error
+          retention-days: 1
+
+  package-dotnet:
+    needs: [publish, build-dotnet-native]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: madeitpx-*
+          path: bindings/dotnet/src/MadeIt.PixelArt
+          merge-multiple: true
+      - name: Pack NuGet package with native assets
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          dotnet pack bindings/dotnet/src/MadeIt.PixelArt/MadeIt.PixelArt.csproj \
+            --configuration Release \
+            --output artifacts \
+            -p:PackageVersion="$version"
+      - name: Attach NuGet package to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release upload "$RELEASE_TAG" "artifacts/MadeIt.PixelArt-${RELEASE_TAG#v}.nupkg" --clobber

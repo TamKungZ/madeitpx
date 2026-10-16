@@ -14,10 +14,9 @@ grid.
 dotnet add package MadeIt.PixelArt
 ```
 
-The NuGet package contains the managed wrapper only. The native `madeitpx`
-shared library is required at runtime and must match the operating system and
-process architecture. Make it available to the native library loader before
-calling the converter.
+The NuGet package includes the native `madeitpx` library for Windows, Linux
+(glibc), and macOS on x64 and ARM64. NuGet selects the native library matching
+the application's runtime identifier.
 
 ## Convert an image buffer
 
@@ -47,6 +46,8 @@ and cleanup enabled.
 
 ## Target frameworks
 
-`net462`, `netstandard2.0`, `netstandard2.1`, and `net10.0`.
+`net462`, `netstandard2.0`, `netstandard2.1`, and `net10.0`. Native assets are
+provided for `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `osx-x64`,
+and `osx-arm64`.
 
 Licensed under [MPL-2.0](https://mozilla.org/MPL/2.0/).

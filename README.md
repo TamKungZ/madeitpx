@@ -75,9 +75,9 @@ through `madeitpx_status`.
 ## .NET binding
 
 The [`MadeIt.PixelArt` binding](bindings/dotnet/src/MadeIt.PixelArt) targets
-.NET Framework 4.6.2, .NET Standard 2.0, .NET Standard 2.1, and .NET 10.0. It
-requires a separately built native `madeitpx` shared library for the current
-platform and architecture.
+.NET Framework 4.6.2, .NET Standard 2.0, .NET Standard 2.1, and .NET 10.0. Its
+NuGet package includes native libraries for Windows, Linux (glibc), and macOS
+on x64 and ARM64.
 
 ## Node.js binding
 
