@@ -49,6 +49,10 @@ const Palette = struct {
     len: usize,
 };
 
+const PaletteLookup = struct {
+    channels: [3][max_palette_colors]u8,
+};
+
 fn checkedMul(a: usize, b: usize) ?usize {
     const result = @mulWithOverflow(a, b);
     if (result[1] != 0) return null;
@@ -146,19 +150,32 @@ fn sampleNearest(
     target_height: u32,
     destination: [*]u8,
 ) void {
+    const x_denominator: u64 = @as(u64, target_width) * 2;
+    const x_increment: u64 = @as(u64, input_width) * 2;
+    const y_denominator: u64 = @as(u64, target_height) * 2;
+    const y_increment: u64 = @as(u64, input_height) * 2;
+    const y_numerator: u64 = input_height;
+    var y_remainder = y_numerator % y_denominator;
+    var source_y = y_numerator / y_denominator;
+
     for (0..target_height) |output_y| {
-        const source_y = @min(@as(u32, @intCast(
-            (@as(u128, @intCast(output_y)) * 2 + 1) * input_height / (@as(u128, target_height) * 2),
-        )), input_height - 1);
+        const x_numerator: u64 = input_width;
+        var x_remainder = x_numerator % x_denominator;
+        var source_x = x_numerator / x_denominator;
         for (0..target_width) |output_x| {
-            const source_x = @min(@as(u32, @intCast(
-                (@as(u128, @intCast(output_x)) * 2 + 1) * input_width / (@as(u128, target_width) * 2),
-            )), input_width - 1);
-            const source_index = @as(usize, @intCast(source_y)) * input_stride +
-                @as(usize, @intCast(source_x)) * 4;
+            const source_index = @as(usize, @intCast(@min(source_y, input_height - 1))) * input_stride +
+                @as(usize, @intCast(@min(source_x, input_width - 1))) * 4;
             const destination_index = (output_y * @as(usize, target_width) + output_x) * 4;
             @memcpy(destination[destination_index .. destination_index + 4], source[source_index .. source_index + 4]);
+
+            const x_accumulated = x_remainder + x_increment;
+            source_x += x_accumulated / x_denominator;
+            x_remainder = x_accumulated % x_denominator;
         }
+
+        const y_accumulated = y_remainder + y_increment;
+        source_y += y_accumulated / y_denominator;
+        y_remainder = y_accumulated % y_denominator;
     }
 }
 
@@ -242,6 +259,14 @@ fn splitBucket(pixels: [*]const u8, indices: []usize, bucket: PaletteBucket, com
     };
 }
 
+fn paletteLookup(palette: []const [3]u8) PaletteLookup {
+    var lookup: PaletteLookup = .{ .channels = @splat(@splat(0)) };
+    for (palette, 0..) |color, index| {
+        for (0..3) |component| lookup.channels[component][index] = color[component];
+    }
+    return lookup;
+}
+
 fn colorDistance(pixel: [*]const u8, index: usize, color: [3]u8) u32 {
     const red = @as(i32, pixelChannel(pixel, index, 0)) - color[0];
     const green = @as(i32, pixelChannel(pixel, index, 1)) - color[1];
@@ -249,15 +274,75 @@ fn colorDistance(pixel: [*]const u8, index: usize, color: [3]u8) u32 {
     return @intCast(3 * red * red + 4 * green * green + 2 * blue * blue);
 }
 
-fn nearestColor(pixels: [*]const u8, index: usize, palette: []const [3]u8) usize {
+fn nearestColorLinear(pixels: [*]const u8, index: usize, palette: []const [3]u8) usize {
     var best_index: usize = 0;
     var best_distance: u32 = std.math.maxInt(u32);
     for (palette, 0..) |color, palette_index| {
         const distance = colorDistance(pixels, index, color);
-        if (distance == 0) return palette_index;
         if (distance < best_distance) {
             best_distance = distance;
             best_index = palette_index;
+        }
+    }
+    return best_index;
+}
+
+fn nearestColor(pixels: [*]const u8, index: usize, palette_len: usize, lookup: *const PaletteLookup) usize {
+    if (palette_len <= 8) {
+        const red = @as(i32, pixelChannel(pixels, index, 0));
+        const green = @as(i32, pixelChannel(pixels, index, 1));
+        const blue = @as(i32, pixelChannel(pixels, index, 2));
+        var best_index: usize = 0;
+        var best_distance: u32 = std.math.maxInt(u32);
+        for (0..palette_len) |palette_index| {
+            const red_diff = red - lookup.channels[0][palette_index];
+            const green_diff = green - lookup.channels[1][palette_index];
+            const blue_diff = blue - lookup.channels[2][palette_index];
+            const distance: u32 = @intCast(
+                3 * red_diff * red_diff + 4 * green_diff * green_diff + 2 * blue_diff * blue_diff,
+            );
+            if (distance == 0) return palette_index;
+            if (distance < best_distance) {
+                best_distance = distance;
+                best_index = palette_index;
+            }
+        }
+        return best_index;
+    }
+
+    const Bytes = @Vector(8, u8);
+    const Distances = @Vector(8, i32);
+    const red_pixel: Distances = @splat(@as(i32, pixelChannel(pixels, index, 0)));
+    const green_pixel: Distances = @splat(@as(i32, pixelChannel(pixels, index, 1)));
+    const blue_pixel: Distances = @splat(@as(i32, pixelChannel(pixels, index, 2)));
+    var best_index: usize = 0;
+    var best_distance: u32 = std.math.maxInt(u32);
+    var base: usize = 0;
+    while (base < palette_len) : (base += 8) {
+        const red_bytes = @as(*align(1) const Bytes, @ptrCast(&lookup.channels[0][base])).*;
+        const green_bytes = @as(*align(1) const Bytes, @ptrCast(&lookup.channels[1][base])).*;
+        const blue_bytes = @as(*align(1) const Bytes, @ptrCast(&lookup.channels[2][base])).*;
+        const red_diff = red_pixel - @as(Distances, @intCast(red_bytes));
+        const green_diff = green_pixel - @as(Distances, @intCast(green_bytes));
+        const blue_diff = blue_pixel - @as(Distances, @intCast(blue_bytes));
+        var distances = red_diff * red_diff * @as(Distances, @splat(3)) +
+            green_diff * green_diff * @as(Distances, @splat(4)) +
+            blue_diff * blue_diff * @as(Distances, @splat(2));
+        inline for (0..8) |lane| {
+            if (base + lane >= palette_len) distances[lane] = std.math.maxInt(i32);
+        }
+        const group_minimum = @reduce(.Min, distances);
+        const group_minimum_u32: u32 = @intCast(group_minimum);
+        if (group_minimum_u32 < best_distance) {
+            best_distance = group_minimum_u32;
+            inline for (0..8) |lane| {
+                const palette_index = base + lane;
+                if (palette_index < palette_len and distances[lane] == group_minimum) {
+                    best_index = palette_index;
+                    break;
+                }
+            }
+            if (best_distance == 0) return best_index;
         }
     }
     return best_index;
@@ -414,8 +499,9 @@ fn compositeAndQuantize(
     }
 
     const palette = buildPalette(pixels, pixel_count, paletteLimit(options), indices);
+    const lookup = paletteLookup(palette.colors[0..palette.len]);
     for (0..pixel_count) |pixel_index| {
-        pixels[pixel_index * 4 + 3] = @intCast(nearestColor(pixels, pixel_index, palette.colors[0..palette.len]));
+        pixels[pixel_index * 4 + 3] = @intCast(nearestColor(pixels, pixel_index, palette.len, &lookup));
     }
     if (options.cluster_cleanup == 1) {
         refineClusterLabels(pixels, width, height, palette, indices);
@@ -577,6 +663,65 @@ test "cluster cleanup removes similar isolated pixels but keeps high contrast" {
     try std.testing.expectEqual(@as(usize, 1), refined[4]);
 }
 
+test "cluster cleanup matches full neighborhood histogram" {
+    const width = 13;
+    const height = 11;
+    var labels: [width * height * 4]u8 = undefined;
+    var refined: [width * height]usize = undefined;
+    var palette = Palette{
+        .colors = @splat(.{ 0, 0, 0 }),
+        .len = 16,
+    };
+    for (0..palette.len) |index| {
+        const value: u32 = @intCast(index);
+        palette.colors[index] = .{
+            @truncate(value *% 17 +% 31),
+            @truncate(value *% 37 +% 11),
+            @truncate(value *% 53 +% 7),
+        };
+    }
+    for (0..width * height) |pixel_index| {
+        const value: u32 = @intCast(pixel_index);
+        labels[pixel_index * 4 + 3] = @truncate((value *% 29 +% value / 3) % palette.len);
+    }
+
+    refineClusterLabels(&labels, width, height, palette, &refined);
+    for (0..height) |y| {
+        for (0..width) |x| {
+            const pixel_index = y * width + x;
+            const current = labels[pixel_index * 4 + 3];
+            var counts: [max_palette_colors]u8 = @splat(0);
+            for (0..3) |row| {
+                const neighbor_y = @as(i64, @intCast(y)) + @as(i64, @intCast(row)) - 1;
+                if (neighbor_y < 0 or neighbor_y >= height) continue;
+                for (0..3) |column| {
+                    if (row == 1 and column == 1) continue;
+                    const neighbor_x = @as(i64, @intCast(x)) + @as(i64, @intCast(column)) - 1;
+                    if (neighbor_x < 0 or neighbor_x >= width) continue;
+                    const neighbor_index = @as(usize, @intCast(neighbor_y)) * width +
+                        @as(usize, @intCast(neighbor_x));
+                    counts[labels[neighbor_index * 4 + 3]] += 1;
+                }
+            }
+
+            var candidate: usize = current;
+            var candidate_count: u8 = 0;
+            for (0..palette.len) |palette_index| {
+                if (counts[palette_index] > candidate_count) {
+                    candidate = palette_index;
+                    candidate_count = counts[palette_index];
+                }
+            }
+            const expected = if (candidate_count >= 4 and candidate_count > counts[current] and
+                colorDistanceBetween(palette.colors[current], palette.colors[candidate]) <= 20000)
+                candidate
+            else
+                current;
+            try std.testing.expectEqual(expected, refined[pixel_index]);
+        }
+    }
+}
+
 test "conversion composites transparent pixels onto the configured background" {
     var options: Options = undefined;
     _ = madeitpx_options_init(&options);
@@ -648,4 +793,79 @@ test "narrow and wide accumulation produce the same pixels" {
     resample(u64, &input, 3, 2, 12, 2, 1, &narrow);
     resample(u128, &input, 3, 2, 12, 2, 1, &wide);
     try std.testing.expectEqualSlices(u8, &narrow, &wide);
+}
+
+test "nearest sampling matches center mapping for varied image sizes" {
+    const input_stride = 64 * 4;
+    var input: [input_stride * 53]u8 = undefined;
+    for (0..53) |y| {
+        for (0..64) |x| {
+            const index = y * input_stride + x * 4;
+            input[index] = @intCast(x);
+            input[index + 1] = @intCast(y);
+            input[index + 2] = @truncate(x * 13 + y * 7);
+            input[index + 3] = 255;
+        }
+    }
+
+    const cases = [_][4]u32{
+        .{ 7, 11, 13, 17 },
+        .{ 31, 27, 14, 9 },
+        .{ 64, 53, 83, 91 },
+        .{ 1, 53, 71, 1 },
+        .{ 64, 1, 1, 88 },
+    };
+    var output: [83 * 91 * 4]u8 = undefined;
+    for (cases) |case| {
+        const input_width = case[0];
+        const input_height = case[1];
+        const target_width = case[2];
+        const target_height = case[3];
+        sampleNearest(&input, input_width, input_height, input_stride, target_width, target_height, &output);
+        for (0..target_height) |y| {
+            const expected_y = @min(@as(u32, @intCast(
+                (@as(u128, @intCast(y)) * 2 + 1) * input_height / (@as(u128, target_height) * 2),
+            )), input_height - 1);
+            for (0..target_width) |x| {
+                const expected_x = @min(@as(u32, @intCast(
+                    (@as(u128, @intCast(x)) * 2 + 1) * input_width / (@as(u128, target_width) * 2),
+                )), input_width - 1);
+                const output_index = (y * @as(usize, target_width) + x) * 4;
+                const input_index = @as(usize, expected_y) * input_stride + @as(usize, expected_x) * 4;
+                try std.testing.expectEqualSlices(u8, input[input_index .. input_index + 4], output[output_index .. output_index + 4]);
+            }
+        }
+    }
+}
+
+test "vector palette search matches exhaustive nearest-color selection" {
+    var palette: [max_palette_colors][3]u8 = undefined;
+    for (0..palette.len) |index| {
+        const value: u32 = @intCast(index);
+        palette[index] = .{
+            @truncate(value *% 73 +% 19),
+            @truncate(value *% 151 +% 47),
+            @truncate(value *% 199 +% 83),
+        };
+    }
+    palette[1] = palette[0];
+
+    var pixels: [1024 * 4]u8 = undefined;
+    for (0..1024) |index| {
+        const value: u32 = @intCast(index);
+        pixels[index * 4] = @truncate(value *% 31 +% 7);
+        pixels[index * 4 + 1] = @truncate(value *% 101 +% 13);
+        pixels[index * 4 + 2] = @truncate(value *% 173 +% 29);
+        pixels[index * 4 + 3] = 255;
+    }
+
+    for (1..max_palette_colors + 1) |palette_len| {
+        const lookup = paletteLookup(palette[0..palette_len]);
+        for (0..1024) |pixel_index| {
+            try std.testing.expectEqual(
+                nearestColorLinear(&pixels, pixel_index, palette[0..palette_len]),
+                nearestColor(&pixels, pixel_index, palette_len, &lookup),
+            );
+        }
+    }
 }
