@@ -21,4 +21,5 @@ jobs:
         with:
           version: 0.17.0
       - run: zig build test
+      - run: zig build
       - run: python3 tests/test_patterns.py
