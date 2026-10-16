@@ -1,33 +1,52 @@
 # MadeIt.PixelArt
 
-![MadeIt.PixelArt logo](logo.png)
+<img src="logo.png" alt="MadeIt.PixelArt" width="180">
 
-`MadeIt.PixelArt` is a .NET binding for the native `madeitpx` library. It
-accepts RGBA8 byte arrays and returns opaque RGBA8 output.
+A .NET wrapper for [madeitpx](https://github.com/TamKungZ/madeitpx), a native
+library that converts RGBA8 pixel buffers to a smaller color palette and output
+grid.
 
-The package targets .NET Framework 4.6.2, .NET Standard 2.0, .NET Standard 2.1,
-and .NET 10.0.
+<img src="preview.png" alt="madeitpx conversion examples" width="720">
 
-The package contains the managed binding, not native binaries. Provide a
-`madeitpx` shared library built for the current operating system and process
-architecture, and make it available through the platform's native library
-search path.
+## Install
 
-## Example
+```shell
+dotnet add package MadeIt.PixelArt
+```
+
+The NuGet package contains the managed wrapper only. The native `madeitpx`
+shared library is required at runtime and must match the operating system and
+process architecture. Make it available to the native library loader before
+calling the converter.
+
+## Convert an image buffer
+
+Pass decoded RGBA8 pixels, their dimensions and row stride, and the desired
+output dimensions:
 
 ```csharp
 using MadeIt.PixelArt;
 
-byte[] rgba = { 255, 0, 0, 255 };
-byte[] pixelArt = PixelArtConverter.Convert(
+byte[] rgba = GetRgbaPixels();
+byte[] result = PixelArtConverter.Convert(
     rgba,
-    inputWidth: 1,
-    inputHeight: 1,
-    inputStride: 4,
-    targetWidth: 1,
-    targetHeight: 1);
+    inputWidth: 256,
+    inputHeight: 256,
+    inputStride: 256 * 4,
+    targetWidth: 64,
+    targetHeight: 64);
 ```
 
-`ConversionOptions` can select a preset or palette size, sampling mode,
-background color, and cluster cleanup behavior. Input and output are tightly
-described RGBA8 byte arrays, while `inputStride` may include row padding.
+`result` is tightly packed RGBA8 with opaque pixels. The wrapper does not
+decode or encode image files.
+
+Pass `ConversionOptions` to set a preset or palette size, choose area or nearest
+sampling, set the compositing background (`0xRRGGBB`), or disable cluster
+cleanup. Defaults are balanced palette, nearest sampling, black background,
+and cleanup enabled.
+
+## Target frameworks
+
+`net462`, `netstandard2.0`, `netstandard2.1`, and `net10.0`.
+
+Licensed under [MPL-2.0](https://mozilla.org/MPL/2.0/).
