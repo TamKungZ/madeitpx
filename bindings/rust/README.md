@@ -1,7 +1,15 @@
 # madeitpx
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/TamKungZ/madeitpx/main/assets/logo-wordmark.png" alt="madeitpx" width="240">
+</p>
+
 Rust binding for [madeitpx](https://github.com/TamKungZ/madeitpx). Converts
 RGBA8 pixel buffers to an output grid with a limited color palette.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/TamKungZ/madeitpx/main/test_sources/output/preview.png" alt="madeitpx conversion examples" width="720">
+</p>
 
 ```toml
 [dependencies]

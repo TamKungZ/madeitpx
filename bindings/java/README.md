@@ -1,6 +1,14 @@
 # madeitpx
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/TamKungZ/madeitpx/main/assets/logo-wordmark.png" alt="madeitpx" width="240">
+</p>
+
 Java binding for [madeitpx](https://github.com/TamKungZ/madeitpx).
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/TamKungZ/madeitpx/main/test_sources/output/preview.png" alt="madeitpx conversion examples" width="720">
+</p>
 
 ```xml
 <dependency>
