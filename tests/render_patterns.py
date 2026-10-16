@@ -113,6 +113,25 @@ def main():
         "\n".join(markdown_sections) + "\n",
         encoding="utf-8",
     )
+    readme_path = ROOT / "README.md"
+    readme = readme_path.read_text(encoding="utf-8")
+    start_marker = "<!-- generated-test-results:start -->"
+    end_marker = "<!-- generated-test-results:end -->"
+    if readme.count(start_marker) != 1 or readme.count(end_marker) != 1:
+        raise RuntimeError("README.md must contain one generated-results marker pair")
+    start = readme.index(start_marker) + len(start_marker)
+    end = readme.index(end_marker)
+    if start > end:
+        raise RuntimeError("README.md generated-results markers are out of order")
+    root_sections = [
+        line.replace('href="', 'href="test_sources/output/')
+        .replace('src="', 'src="test_sources/output/')
+        for line in markdown_sections[5:]
+    ]
+    readme_path.write_text(
+        readme[:start] + "\n\n" + "\n".join(root_sections) + "\n" + readme[end:],
+        encoding="utf-8",
+    )
     print(f"Rendered {len(pattern_paths)} patterns to {OUTPUT_DIR}")
     print(f"Generated {len(pattern_paths) * len(PRESET_NAMES) * len(SAMPLE_NAMES)} PNG previews.")
 
