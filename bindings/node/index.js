@@ -32,10 +32,36 @@ const NATIVE_OPTIONS = koffi.struct('madeitpx_options', {
   reserved: 'uint32_t'
 });
 
-function nativeLibraryName() {
-  if (process.platform === 'win32') return 'madeitpx.dll';
-  if (process.platform === 'darwin') return 'libmadeitpx.dylib';
-  return 'libmadeitpx.so';
+function nativePackageName() {
+  const platforms = {
+    'win32-x64': '@madeit/pixelart-win32-x64',
+    'win32-arm64': '@madeit/pixelart-win32-arm64',
+    'linux-x64': '@madeit/pixelart-linux-x64-gnu',
+    'linux-arm64': '@madeit/pixelart-linux-arm64-gnu',
+    'darwin-x64': '@madeit/pixelart-darwin-x64',
+    'darwin-arm64': '@madeit/pixelart-darwin-arm64'
+  };
+  const key = `${process.platform}-${process.arch}`;
+  return platforms[key];
+}
+
+function resolveNativeLibrary(libraryPath) {
+  const override = libraryPath || process.env.MADEITPX_LIBRARY_PATH;
+  if (override) return override;
+
+  const packageName = nativePackageName();
+  if (!packageName) {
+    throw new Error(`No prebuilt madeitpx library is available for ${process.platform}-${process.arch}`);
+  }
+
+  try {
+    return require(packageName);
+  } catch (error) {
+    if (error && error.code === 'MODULE_NOT_FOUND') {
+      throw new Error(`The native package ${packageName} is not installed; reinstall @madeit/pixelart for this platform`);
+    }
+    throw error;
+  }
 }
 
 function statusError(status) {
@@ -92,7 +118,7 @@ function validateOptions(options) {
 }
 
 function createNativeBindings(libraryPath) {
-  const library = koffi.load(libraryPath || process.env.MADEITPX_LIBRARY_PATH || nativeLibraryName());
+  const library = koffi.load(resolveNativeLibrary(libraryPath));
 
   return {
     optionsInit: library.func('int madeitpx_options_init(_Out_ madeitpx_options *options)'),

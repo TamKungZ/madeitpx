@@ -45,3 +45,88 @@ jobs:
           gh release create "$RELEASE_TAG" \
             --title "madeitpx $RELEASE_TAG" \
             --notes-file "$RUNNER_TEMP/release-notes.md"
+
+  publish-node-platforms:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            package: win32-x64
+            target: x86_64-windows
+            library: zig-out/bin/madeitpx.dll
+          - runner: windows-11-arm
+            package: win32-arm64
+            target: aarch64-windows
+            library: zig-out/bin/madeitpx.dll
+          - runner: ubuntu-24.04
+            package: linux-x64-gnu
+            target: x86_64-linux-gnu.2.17
+            library: zig-out/lib/libmadeitpx.so
+          - runner: ubuntu-24.04-arm
+            package: linux-arm64-gnu
+            target: aarch64-linux-gnu.2.17
+            library: zig-out/lib/libmadeitpx.so
+          - runner: macos-15-intel
+            package: darwin-x64
+            target: x86_64-macos
+            library: zig-out/lib/libmadeitpx.dylib
+          - runner: macos-15
+            package: darwin-arm64
+            target: aarch64-macos
+            library: zig-out/lib/libmadeitpx.dylib
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          registry-url: https://registry.npmjs.org
+          scope: "@madeit"
+      - name: Build and publish platform package
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PACKAGE: ${{ matrix.package }}
+          TARGET: ${{ matrix.target }}
+          LIBRARY: ${{ matrix.library }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          zig build -Doptimize=ReleaseFast -Dtarget="$TARGET"
+          package_dir="bindings/node/platforms/$PACKAGE"
+          cp "$LIBRARY" "$package_dir/"
+          cp LICENSE "$package_dir/LICENSE"
+          version="${VERSION#v}"
+          node -e "const fs=require('node:fs'); const p='$package_dir/package.json'; const m=JSON.parse(fs.readFileSync(p)); m.version='$version'; fs.writeFileSync(p, JSON.stringify(m, null, 2)+'\n');"
+          npm publish "$package_dir" --access public
+
+  publish-node:
+    needs: publish-node-platforms
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          registry-url: https://registry.npmjs.org
+          scope: "@madeit"
+      - name: Publish Node.js package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          node - <<'JS'
+          const fs = require('node:fs');
+          const file = 'bindings/node/package.json';
+          const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+          const version = process.env.VERSION.replace(/^v/, '');
+          manifest.version = version;
+          for (const name of Object.keys(manifest.optionalDependencies)) {
+            manifest.optionalDependencies[name] = version;
+          }
+          fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
+          JS
+          npm publish bindings/node --access public

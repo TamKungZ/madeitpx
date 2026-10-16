@@ -1,0 +1,10 @@
+{
+  "name": "@madeit/pixelart-darwin-arm64",
+  "version": "0.1.0",
+  "description": "macOS ARM64 native library for @madeit/pixelart",
+  "license": "MPL-2.0",
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "main": "index.js",
+  "files": ["index.js", "libmadeitpx.dylib", "LICENSE"]
+}

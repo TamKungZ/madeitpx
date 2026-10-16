@@ -7,17 +7,16 @@ RGBA8 pixel buffers to an output grid with a limited color palette.
 npm install @madeit/pixelart
 ```
 
-The package contains the JavaScript wrapper, not the native library. Build
-`madeitpx` for the current operating system and architecture, and make the
-shared library available to the system loader. Alternatively, pass its path
-when creating a converter or set `MADEITPX_LIBRARY_PATH`.
+The package installs a native library for supported platforms: Windows x64 and
+ARM64, Linux x64 and ARM64 (glibc), and macOS x64 and ARM64. The matching
+platform package is an optional dependency and is selected automatically.
+For local builds or custom locations, pass `libraryPath` when creating a
+converter or set `MADEITPX_LIBRARY_PATH`.
 
 ```js
 const { createConverter } = require('@madeit/pixelart');
 
-const convert = createConverter({
-  libraryPath: 'path/to/libmadeitpx.so'
-});
+const convert = createConverter();
 
 const rgba = Buffer.from([
   255, 0, 0, 255,

@@ -2,7 +2,7 @@ export type Preset = 'balanced' | 'detail' | 'bold';
 export type SamplingMode = 'area' | 'nearest';
 
 export interface ConverterConfiguration {
-  /** Absolute path to the madeitpx shared library. Defaults to the platform loader name. */
+  /** Path to a custom madeitpx shared library. Defaults to the matching optional platform package. */
   libraryPath?: string;
 }
 

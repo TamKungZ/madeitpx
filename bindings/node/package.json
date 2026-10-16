@@ -32,5 +32,13 @@
   },
   "dependencies": {
     "koffi": "^3.3.3"
+  },
+  "optionalDependencies": {
+    "@madeit/pixelart-darwin-arm64": "0.1.0",
+    "@madeit/pixelart-darwin-x64": "0.1.0",
+    "@madeit/pixelart-linux-arm64-gnu": "0.1.0",
+    "@madeit/pixelart-linux-x64-gnu": "0.1.0",
+    "@madeit/pixelart-win32-arm64": "0.1.0",
+    "@madeit/pixelart-win32-x64": "0.1.0"
   }
 }
