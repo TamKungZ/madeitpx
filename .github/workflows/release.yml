@@ -8,9 +8,36 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  create-release:
+  validate-tag:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag $RELEASE_TAG is not strict semver (vX.Y.Z)"
+            exit 1
+          fi
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag commit is not on main"
+            exit 1
+          fi
+
+  create-release:
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
@@ -50,12 +77,15 @@ jobs:
         run: |
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" \
+              --verify-tag \
               --title "madeitpx $RELEASE_TAG" \
               --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
 
   build-native:
+    needs: validate-tag
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -97,7 +127,9 @@ jobs:
           LIBRARY: ${{ matrix.library }}
         run: |
           zig build test
+          zig build test -Doptimize=ReleaseFast -Dtarget="$TARGET"
           zig build -Doptimize=ReleaseFast -Dtarget="$TARGET"
+          test -f "$LIBRARY"
           mkdir -p "native/$RID"
           cp "$LIBRARY" "native/$RID/"
       - uses: actions/upload-artifact@v4
@@ -105,11 +137,12 @@ jobs:
           name: madeitpx-native-${{ matrix.rid }}
           path: native/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
 
   attach-native:
     needs: [create-release, build-native]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -142,15 +175,20 @@ jobs:
           if len(list(output.glob("*.zip"))) != 6:
               raise SystemExit("Expected native archives for all six supported targets")
           PY
+      - name: Create checksums
+        run: |
+          cd release-assets
+          sha256sum *.zip > SHA256SUMS.txt
       - name: Attach native archives to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release upload "$RELEASE_TAG" release-assets/*.zip --clobber
+        run: gh release upload "$RELEASE_TAG" release-assets/* --clobber
 
   publish-node-platforms:
     needs: [create-release, build-native]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -193,11 +231,17 @@ jobs:
           cp LICENSE "$package_dir/LICENSE"
           version="${RELEASE_TAG#v}"
           node -e "const fs=require('node:fs'); const p='$package_dir/package.json'; const m=JSON.parse(fs.readFileSync(p)); m.version='$version'; fs.writeFileSync(p, JSON.stringify(m, null, 2)+'\n');"
-          npm publish "$package_dir" --access public
+          name=$(node -p "require('./$package_dir/package.json').name")
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version already published, skipping"
+          else
+            npm publish "$package_dir" --access public
+          fi
 
   publish-node:
     needs: publish-node-platforms
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -223,11 +267,18 @@ jobs:
           }
           fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
           JS
-          npm publish bindings/node --access public
+          version="${RELEASE_TAG#v}"
+          name=$(node -p "require('./bindings/node/package.json').name")
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version already published, skipping"
+          else
+            npm publish bindings/node --access public
+          fi
 
   publish-dotnet:
     needs: [create-release, build-native]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
@@ -263,7 +314,19 @@ jobs:
             --configuration Release \
             --output artifacts \
             -p:PackageVersion="$version"
-          dotnet nuget push "artifacts/MadeIt.PixelArt-$version.nupkg" \
+          shopt -s nullglob
+          packages=(artifacts/*.nupkg)
+          if [ "${#packages[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one .nupkg, found ${#packages[@]}"
+            exit 1
+          fi
+          for rid in win-x64 win-arm64 linux-x64 linux-arm64 osx-x64 osx-arm64; do
+            if ! unzip -l "${packages[0]}" | grep -q "runtimes/$rid/native/"; then
+              echo "::error::NuGet package is missing native library for $rid"
+              exit 1
+            fi
+          done
+          dotnet nuget push "${packages[0]}" \
             --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
@@ -271,11 +334,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release upload "$RELEASE_TAG" "artifacts/MadeIt.PixelArt-${RELEASE_TAG#v}.nupkg" --clobber
+        run: gh release upload "$RELEASE_TAG" artifacts/*.nupkg --clobber
 
   publish-python:
     needs: [create-release, build-native]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
       id-token: write
@@ -303,6 +367,10 @@ jobs:
           done
           version="${RELEASE_TAG#v}"
           sed -i "s/^__version__ = .*/__version__ = \"$version\"/" bindings/python/src/madeitpx/__init__.py
+          if ! grep -q "^__version__ = \"$version\"$" bindings/python/src/madeitpx/__init__.py; then
+            echo "::error::__version__ was not updated"
+            exit 1
+          fi
           python -m pip install build
           python -m build bindings/python --outdir dist
           python - <<'PY'
@@ -327,6 +395,8 @@ jobs:
           PY
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
       - name: Attach Python distributions to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -336,6 +406,7 @@ jobs:
   publish-rust:
     needs: [create-release, build-native]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -356,13 +427,18 @@ jobs:
             cp "native-assets/$rid/"* "bindings/rust/native/$rid/"
           done
           version="${RELEASE_TAG#v}"
-          sed -i "s/^version = .*/version = \"$version\"/" bindings/rust/Cargo.toml
+          sed -i '0,/^version = .*/s//version = "'"$version"'"/' bindings/rust/Cargo.toml
+          if ! grep -q "^version = \"$version\"$" bindings/rust/Cargo.toml; then
+            echo "::error::Cargo.toml version was not updated"
+            exit 1
+          fi
           cargo update --manifest-path bindings/rust/Cargo.toml --workspace
-          cargo publish --manifest-path bindings/rust/Cargo.toml
+          cargo publish --manifest-path bindings/rust/Cargo.toml --allow-dirty
 
   publish-java:
     needs: [create-release, build-native]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
@@ -406,4 +482,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release upload "$RELEASE_TAG" "bindings/java/target/madeitpx-${RELEASE_TAG#v}.jar" --clobber
+        run: |
+          jar="bindings/java/target/madeitpx-${RELEASE_TAG#v}.jar"
+          if [ ! -f "$jar" ]; then
+            echo "::error::$jar not found"
+            ls -la bindings/java/target
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" "$jar" --clobber
