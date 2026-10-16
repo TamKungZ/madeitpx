@@ -1,33 +1,62 @@
 # madeitpx
 
 `madeitpx` is a native image-processing library written in Zig with a C ABI. It
-converts RGBA8 images to a caller-selected pixel grid and groups colors into a
-limited palette.
+takes an RGBA8 pixel buffer, samples it onto a caller-selected output grid,
+reduces the sampled colors to a limited palette, and returns an opaque RGBA8
+buffer. It processes pixel buffers rather than opening image files, so decoding
+and encoding are handled by the calling application.
 
 Licensed under the [Mozilla Public License 2.0](LICENSE).
 
-## Features
+## Conversion
 
-- Balanced, detail, and bold presets, with a configurable palette of 2-64 colors.
-- Nearest-neighbor or area sampling.
-- Transparent input composited onto a configurable background; output is opaque
-  RGBA8.
-- Optional cleanup of isolated pixels with similar-colored neighbors.
+The conversion has three stages:
 
-## C API
+1. **Sampling** maps the source image to the requested output width and height.
+   Nearest sampling selects a source pixel for each output pixel and is the
+   default. Area sampling combines the covered source pixels, weighting color
+   by alpha.
+2. **Palette reduction** groups sampled colors into a palette and maps each
+   output pixel to its nearest palette color.
+3. **Cluster cleanup**, enabled by default, replaces isolated pixels when a
+   sufficiently large group of nearby pixels has a similar color. Strong
+   color differences are left alone.
 
-The public interface is declared in [`include/madeitpx.h`](include/madeitpx.h).
-Input pixels are top-to-bottom RGBA8 with an explicit byte stride; output is
-tightly packed RGBA8. Initialize `madeitpx_options` with
-`madeitpx_options_init` before setting options. The caller owns the input and
-output buffers, which must not overlap.
+Transparent pixels are composited onto the configured background before
+palette reduction. The default background is black, and every output pixel has
+alpha 255.
 
-## Test images
+## Options
 
-The [`test_sources/test-patterns`](test_sources/test-patterns) directory contains
-the image corpus used to check sampling, palettes, alpha handling, cleanup, and
-image sizes. The comparisons below show each source with every preset and
-sampling mode.
+Initialize `madeitpx_options` with `madeitpx_options_init` to get the defaults,
+then change the fields you need.
+
+| Option | Behavior |
+|---|---|
+| `preset` | Selects a default palette limit: balanced (32), detail (64), or bold (16) colors. |
+| `palette_colors` | Overrides the preset limit with a value from 2 to 64; zero uses the preset. |
+| `sample_mode` | Chooses nearest or area sampling. Defaults to nearest. |
+| `background_rgb` | Sets the opaque compositing color as `0xRRGGBB`. Defaults to black. |
+| `cluster_cleanup` | Enables (`1`) or disables (`0`) cleanup of isolated, similar-colored pixels. Defaults to enabled. |
+
+## C interface
+
+The public declarations are in [`include/madeitpx.h`](include/madeitpx.h).
+`madeitpx_convert_rgba8` accepts top-to-bottom RGBA8 input, its dimensions and
+byte stride, the requested output dimensions, options, and a caller-provided
+output buffer. The input stride may include padding; output is tightly packed.
+Use `madeitpx_get_output_size` to determine the required output capacity.
+
+The caller owns both buffers, and they must not overlap. The API reports
+invalid arguments, undersized buffers, size overflow, and allocation failure
+through `madeitpx_status`.
+
+## Validation images
+
+The [`test_sources/test-patterns`](test_sources/test-patterns) directory
+contains images for checking sampling, palette limits, alpha compositing,
+cleanup, and unusual dimensions. The comparisons below show each source with
+every preset and sampling mode.
 
 ## Test-source results
 
