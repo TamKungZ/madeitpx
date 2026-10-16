@@ -1,8 +1,12 @@
 name: ci
 on:
-  push:
-    branches: [main]
   pull_request:
+    paths-ignore: ["**.md", "docs/**", "LICENSE"]
+  push:
+    tags: ["v*"]
+  schedule:
+    - cron: "0 3 * * 1"   # จันทร์ละครั้ง
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -12,9 +16,11 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  linux:
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      MADEITPX_LIBRARY_PATH: ${{ github.workspace }}/zig-out/lib/libmadeitpx.so
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
@@ -23,29 +29,39 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24.x
+          cache: npm
+          cache-dependency-path: bindings/node/package-lock.json
       - uses: actions/setup-python@v5
         with:
           python-version: "3.9"
-      - uses: actions/setup-java@v4
+          cache: pip
+          cache-dependency-path: bindings/python/pyproject.toml
+      - uses: actions/setup-dotnet@v4
         with:
-          distribution: temurin
-          java-version: 17
+          dotnet-version: 10.0.x
+      - uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: maven-${{ hashFiles('bindings/java/pom.xml') }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: bindings/rust
       - run: zig build
       - run: zig build test
       - run: python3 tests/test_patterns.py
       - run: mvn --batch-mode --file bindings/java/pom.xml test
-        env:
-          MADEITPX_LIBRARY_PATH: ${{ github.workspace }}/zig-out/lib/libmadeitpx.so
-      - run: npm ci --prefix bindings/node
-      - run: npm test --prefix bindings/node
-        env:
-          MADEITPX_LIBRARY_PATH: ${{ github.workspace }}/zig-out/lib/libmadeitpx.so
-      - run: python -m pip install --editable bindings/python
-      - run: python -m unittest discover --start-directory bindings/python/tests --verbose
-        env:
-          MADEITPX_LIBRARY_PATH: ${{ github.workspace }}/zig-out/lib/libmadeitpx.so
+      - run: npm ci --prefix bindings/node && npm test --prefix bindings/node
+      - run: python -m pip install -e bindings/python && python -m unittest discover -s bindings/python/tests
+      - run: cargo test --manifest-path bindings/rust/Cargo.toml
+      - run: |
+          proj=bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/MadeIt.PixelArt.SmokeTests.csproj
+          dotnet build $proj -c Release
+          cp zig-out/lib/libmadeitpx.so bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/bin/Release/net10.0/
+          dotnet run --project $proj -c Release --no-build
 
-  dotnet:
+  cross-platform:
+    if: github.event_name != 'pull_request'
+    needs: linux
     strategy:
       fail-fast: false
       matrix:
@@ -53,23 +69,17 @@ jobs:
           - runner: windows-latest
             target: x86_64-windows
             library: zig-out/bin/madeitpx.dll
-          - runner: windows-11-arm
-            target: aarch64-windows
-            library: zig-out/bin/madeitpx.dll
-          - runner: ubuntu-24.04
-            target: x86_64-linux-gnu.2.17
-            library: zig-out/lib/libmadeitpx.so
-          - runner: ubuntu-24.04-arm
-            target: aarch64-linux-gnu.2.17
-            library: zig-out/lib/libmadeitpx.so
-          - runner: macos-15-intel
-            target: x86_64-macos
-            library: zig-out/lib/libmadeitpx.dylib
+            rid: windows-x64
           - runner: macos-15
             target: aarch64-macos
             library: zig-out/lib/libmadeitpx.dylib
+            rid: darwin-arm64
+          - runner: ubuntu-24.04-arm
+            target: aarch64-linux-gnu.2.17
+            library: zig-out/lib/libmadeitpx.so
+            rid: linux-arm64-gnu
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
@@ -78,41 +88,27 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: bindings/rust
       - run: zig build -Doptimize=ReleaseFast -Dtarget=${{ matrix.target }}
-      - name: Stage Python native library
+      - name: Stage native library
         shell: bash
         run: |
-          case "${{ matrix.target }}" in
-            x86_64-windows) rid=windows-x64; library=zig-out/bin/madeitpx.dll ;;
-            aarch64-windows) rid=windows-arm64; library=zig-out/bin/madeitpx.dll ;;
-            x86_64-linux-gnu.2.17) rid=linux-x64-gnu; library=zig-out/lib/libmadeitpx.so ;;
-            aarch64-linux-gnu.2.17) rid=linux-arm64-gnu; library=zig-out/lib/libmadeitpx.so ;;
-            x86_64-macos) rid=darwin-x64; library=zig-out/lib/libmadeitpx.dylib ;;
-            aarch64-macos) rid=darwin-arm64; library=zig-out/lib/libmadeitpx.dylib ;;
-            *) echo "Unsupported target: ${{ matrix.target }}" >&2; exit 1 ;;
-          esac
-          destination="bindings/python/src/madeitpx/native/$rid"
-          mkdir -p "$destination"
-          cp "$library" "$destination/"
-      - run: python -m pip install --editable bindings/python
-      - run: python -m unittest discover --start-directory bindings/python/tests --verbose
+          d="bindings/python/src/madeitpx/native/${{ matrix.rid }}"
+          mkdir -p "$d" && cp "${{ matrix.library }}" "$d/"
+      - run: python -m pip install -e bindings/python
+      - run: python -m unittest discover -s bindings/python/tests
       - run: cargo test --manifest-path bindings/rust/Cargo.toml
         env:
           MADEITPX_LIBRARY_PATH: ${{ github.workspace }}/${{ matrix.library }}
-      - run: dotnet build bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/MadeIt.PixelArt.SmokeTests.csproj --configuration Release
-      - name: Stage native library beside smoke test
+      - name: dotnet smoke test
         shell: bash
         run: |
-          output="bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/bin/Release/net10.0"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            cp zig-out/bin/madeitpx.dll "$output/"
-          elif [ "$RUNNER_OS" = "macOS" ]; then
-            cp zig-out/lib/libmadeitpx.dylib "$output/"
-          else
-            cp zig-out/lib/libmadeitpx.so "$output/"
-          fi
-      - run: dotnet run --project bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/MadeIt.PixelArt.SmokeTests.csproj --configuration Release --no-build
+          proj=bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/MadeIt.PixelArt.SmokeTests.csproj
+          dotnet build $proj -c Release
+          cp "${{ matrix.library }}" bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/bin/Release/net10.0/
+          dotnet run --project $proj -c Release --no-build
