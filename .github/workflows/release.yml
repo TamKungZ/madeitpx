@@ -488,7 +488,7 @@ jobs:
 
   approve:
     if: github.event_name == 'push'
-    needs: [prepare-notes, build-native, verify-packages, verify-secrets, package-zip, package-deb]
+    needs: [prepare-notes, build-native, verify-packages, verify-secrets, package-zip, package-deb, verify-deb-distros]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment:
@@ -694,6 +694,55 @@ jobs:
           path: debs/
           if-no-files-found: error
           retention-days: 7
+
+  verify-deb-distros:
+    needs: package-deb
+    runs-on: ${{ matrix.platform.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+        image:
+          - ubuntu:22.04
+          - ubuntu:24.04
+          - debian:12
+          - debian:13
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets-deb-${{ matrix.platform.arch }}
+          path: debs
+      - name: Install and link inside ${{ matrix.image }}
+        env:
+          IMAGE: ${{ matrix.image }}
+          ARCH: ${{ matrix.platform.arch }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/check.sh" <<'EOF'
+          set -euxo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends gcc libc6-dev \
+            "/debs/libmadeitpx_${VERSION}_${ARCH}.deb" \
+            "/debs/libmadeitpx-dev_${VERSION}_${ARCH}.deb"
+          ldconfig -p | grep libmadeitpx
+          printf '#include <madeitpx.h>\nint main(void) { return 0; }\n' \
+            | gcc -x c - -Wl,--no-as-needed -lmadeitpx -o /tmp/deb-link-test
+          /tmp/deb-link-test
+          dpkg -r libmadeitpx-dev libmadeitpx
+          EOF
+          docker run --rm \
+            -e VERSION="${RELEASE_TAG#v}" \
+            -e ARCH="$ARCH" \
+            -v "$PWD/debs:/debs:ro" \
+            -v "$RUNNER_TEMP/check.sh:/check.sh:ro" \
+            "$IMAGE" bash /check.sh
 
   attach-native:
     needs: [create-release, package-zip, package-deb]
@@ -1091,6 +1140,7 @@ jobs:
       - verify-secrets
       - package-zip
       - package-deb
+      - verify-deb-distros
       - approve
       - create-release
       - attach-native
