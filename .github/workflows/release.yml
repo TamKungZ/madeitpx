@@ -488,7 +488,7 @@ jobs:
 
   approve:
     if: github.event_name == 'push'
-    needs: [prepare-notes, build-native, verify-packages, verify-secrets]
+    needs: [prepare-notes, build-native, verify-packages, verify-secrets, package-zip, package-deb]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment:
@@ -520,12 +520,10 @@ jobs:
               --notes-file release-notes/release-notes.md
           fi
 
-  attach-native:
-    needs: [create-release, build-native]
+  package-zip:
+    needs: build-native
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -553,16 +551,171 @@ jobs:
                   bundle.write(files[0], files[0].name)
                   bundle.write("include/madeitpx.h", "madeitpx.h")
                   bundle.write("LICENSE", "LICENSE")
+              with ZipFile(archive) as bundle:
+                  if bundle.testzip() is not None:
+                      raise SystemExit(f"{archive} is corrupt")
+                  names = set(bundle.namelist())
+              expected = {files[0].name, "madeitpx.h", "LICENSE"}
+              if names != expected:
+                  raise SystemExit(f"{archive} has unexpected contents: {sorted(names)}")
           if len(list(output.glob("*.zip"))) != 6:
               raise SystemExit("Expected native archives for all six supported targets")
           PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-zip
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 7
+
+  package-deb:
+    needs: build-native
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            rid: linux-x64-gnu
+            arch: amd64
+            triplet: x86_64-linux-gnu
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64-gnu
+            arch: arm64
+            triplet: aarch64-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: madeitpx-native-${{ matrix.rid }}
+          path: native-assets
+      - name: Build .deb packages
+        env:
+          RID: ${{ matrix.rid }}
+          ARCH: ${{ matrix.arch }}
+          TRIPLET: ${{ matrix.triplet }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          lib="native-assets/$RID/libmadeitpx.so"
+          for file in "$lib" include/madeitpx.h LICENSE; do
+            if [ ! -f "$file" ]; then
+              echo "::error::Missing $file"
+              exit 1
+            fi
+          done
+          maintainer="${GITHUB_REPOSITORY_OWNER} <${GITHUB_REPOSITORY_OWNER}@users.noreply.github.com>"
+          homepage="https://github.com/${GITHUB_REPOSITORY}"
+          mkdir -p debs
+
+          runtime="$RUNNER_TEMP/libmadeitpx"
+          rm -rf "$runtime"
+          install -d "$runtime/DEBIAN" "$runtime/usr/lib/$TRIPLET" "$runtime/usr/share/doc/libmadeitpx"
+          install -m 0644 "$lib" "$runtime/usr/lib/$TRIPLET/libmadeitpx.so"
+          install -m 0644 LICENSE "$runtime/usr/share/doc/libmadeitpx/copyright"
+          cat > "$runtime/DEBIAN/control" <<EOF
+          Package: libmadeitpx
+          Version: $version
+          Architecture: $ARCH
+          Maintainer: $maintainer
+          Section: libs
+          Priority: optional
+          Multi-Arch: same
+          Depends: libc6 (>= 2.17)
+          Installed-Size: $(du -sk "$runtime/usr" | cut -f1)
+          Homepage: $homepage
+          Description: madeitpx shared library
+           Native shared library for madeitpx.
+          EOF
+          cat > "$runtime/DEBIAN/postinst" <<'EOF'
+          #!/bin/sh
+          set -e
+          if [ "$1" = "configure" ]; then
+            ldconfig
+          fi
+          exit 0
+          EOF
+          cat > "$runtime/DEBIAN/postrm" <<'EOF'
+          #!/bin/sh
+          set -e
+          if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+            ldconfig
+          fi
+          exit 0
+          EOF
+          chmod 0755 "$runtime/DEBIAN/postinst" "$runtime/DEBIAN/postrm"
+          dpkg-deb --root-owner-group --build "$runtime" "debs/libmadeitpx_${version}_${ARCH}.deb"
+
+          dev="$RUNNER_TEMP/libmadeitpx-dev"
+          rm -rf "$dev"
+          install -d "$dev/DEBIAN" "$dev/usr/include" "$dev/usr/share/doc/libmadeitpx-dev"
+          install -m 0644 include/madeitpx.h "$dev/usr/include/madeitpx.h"
+          install -m 0644 LICENSE "$dev/usr/share/doc/libmadeitpx-dev/copyright"
+          cat > "$dev/DEBIAN/control" <<EOF
+          Package: libmadeitpx-dev
+          Version: $version
+          Architecture: $ARCH
+          Maintainer: $maintainer
+          Section: libdevel
+          Priority: optional
+          Depends: libmadeitpx (= $version)
+          Installed-Size: $(du -sk "$dev/usr" | cut -f1)
+          Homepage: $homepage
+          Description: madeitpx development files
+           C header for the madeitpx shared library.
+          EOF
+          dpkg-deb --root-owner-group --build "$dev" "debs/libmadeitpx-dev_${version}_${ARCH}.deb"
+      - name: Verify .deb packages install and link
+        env:
+          ARCH: ${{ matrix.arch }}
+          TRIPLET: ${{ matrix.triplet }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          runtime="debs/libmadeitpx_${version}_${ARCH}.deb"
+          dev="debs/libmadeitpx-dev_${version}_${ARCH}.deb"
+          dpkg-deb --info "$runtime"
+          dpkg-deb --contents "$runtime"
+          dpkg-deb --contents "$dev"
+          dpkg-deb --contents "$runtime" | grep -q "usr/lib/$TRIPLET/libmadeitpx.so$"
+          dpkg-deb --contents "$dev" | grep -q "usr/include/madeitpx.h$"
+          sudo dpkg -i "$runtime" "$dev"
+          ldconfig -p | grep libmadeitpx
+          printf '#include <madeitpx.h>\nint main(void) { return 0; }\n' \
+            | gcc -x c - -Wl,--no-as-needed -lmadeitpx -o "$RUNNER_TEMP/deb-link-test"
+          "$RUNNER_TEMP/deb-link-test"
+          sudo dpkg -r libmadeitpx-dev libmadeitpx
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-deb-${{ matrix.arch }}
+          path: debs/
+          if-no-files-found: error
+          retention-days: 7
+
+  attach-native:
+    needs: [create-release, package-zip, package-deb]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-assets-*
+          path: release-assets
+          merge-multiple: true
       - name: Create checksums
         run: |
           cd release-assets
-          sha256sum *.zip > SHA256SUMS.txt
-      - name: Attach native archives to GitHub Release
+          ls -la
+          sha256sum *.zip *.deb > SHA256SUMS.txt
+      - name: Attach native archives and .deb packages to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: gh release upload "$RELEASE_TAG" release-assets/* --clobber
 
@@ -936,6 +1089,8 @@ jobs:
       - build-native
       - verify-packages
       - verify-secrets
+      - package-zip
+      - package-deb
       - approve
       - create-release
       - attach-native
