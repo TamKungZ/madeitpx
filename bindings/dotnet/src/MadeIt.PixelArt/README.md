@@ -1,12 +1,10 @@
 # MadeIt.PixelArt
 
-<img src="logo.png" alt="MadeIt.PixelArt" width="180">
-
 A .NET wrapper for [madeitpx](https://github.com/TamKungZ/madeitpx), a native
 library that converts RGBA8 pixel buffers to a smaller color palette and output
 grid.
 
-<img src="preview.png" alt="madeitpx conversion examples" width="720">
+![madeitpx conversion examples](https://raw.githubusercontent.com/TamKungZ/madeitpx/main/test_sources/output/preview.png)
 
 ## Install
 
