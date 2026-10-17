@@ -6,7 +6,7 @@
   "author": "TamKungZ_ <dev@tamkungz.me>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/TamKungZ/madeitpx.git",
+    "url": "git+https://github.com/TamKungZ/madeitpx.git",
     "directory": "bindings/node"
   },
   "main": "index.js",
