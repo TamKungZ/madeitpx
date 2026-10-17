@@ -368,9 +368,127 @@ jobs:
             fi
           done
 
+  verify-secrets:
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check required secrets are set
+        env:
+          MAVEN_GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          GPG_KEYID: ${{ secrets.GPG_KEYID || vars.GPG_KEYID }}
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          missing=0
+          for name in MAVEN_GPG_PRIVATE_KEY MAVEN_GPG_PASSPHRASE GPG_KEYID \
+                      MAVEN_CENTRAL_USERNAME MAVEN_CENTRAL_PASSWORD CARGO_REGISTRY_TOKEN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret $name is not set or empty"
+              missing=1
+            fi
+          done
+          exit "$missing"
+      - name: Verify GPG key matches GPG_KEYID and can sign
+        env:
+          MAVEN_GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          GPG_KEYID: ${{ secrets.GPG_KEYID || vars.GPG_KEYID }}
+        run: |
+          set -euo pipefail
+          export GNUPGHOME="$(mktemp -d)"
+          chmod 700 "$GNUPGHOME"
+          trap 'gpgconf --kill gpg-agent >/dev/null 2>&1 || true; rm -rf "$GNUPGHOME"' EXIT
+
+          if ! printf '%s' "$MAVEN_GPG_PRIVATE_KEY" | gpg --batch --import 2>"$RUNNER_TEMP/gpg-import.log"; then
+            cat "$RUNNER_TEMP/gpg-import.log"
+            echo "::error::MAVEN_GPG_PRIVATE_KEY could not be imported (expected an ASCII-armored private key)"
+            exit 1
+          fi
+          gpg --batch --list-secret-keys --with-colons --fingerprint > "$RUNNER_TEMP/gpg-keys.txt"
+
+          fpr=$(python3 - "$GPG_KEYID" "$RUNNER_TEMP/gpg-keys.txt" <<'PY'
+          import sys
+          import time
+
+          want = sys.argv[1].replace(" ", "").upper()
+          if want.startswith("0X"):
+              want = want[2:]
+          if len(want) < 8 or any(c not in "0123456789ABCDEF" for c in want):
+              raise SystemExit(f"::error::GPG_KEYID is not a valid hex key id or fingerprint (got {len(want)} chars)")
+
+          entries = []
+          pending = None
+          primary_fpr = None
+          for line in open(sys.argv[2], encoding="utf-8").read().splitlines():
+              f = line.split(":")
+              if f[0] in ("sec", "ssb"):
+                  pending = {"kind": f[0], "validity": f[1], "expires": f[6]}
+              elif f[0] == "fpr" and pending is not None:
+                  if pending["kind"] == "sec":
+                      primary_fpr = f[9]
+                  pending["fpr"] = f[9]
+                  pending["primary"] = primary_fpr
+                  entries.append(pending)
+                  pending = None
+
+          if not entries:
+              raise SystemExit("::error::No secret key found in MAVEN_GPG_PRIVATE_KEY")
+
+          now = time.time()
+
+          def check(entry, label):
+              if entry["validity"] == "r":
+                  raise SystemExit(f"::error::{label} {entry['fpr'][-16:]} is revoked")
+              if entry["validity"] == "e" or (entry["expires"] and int(entry["expires"]) < now):
+                  raise SystemExit(f"::error::{label} {entry['fpr'][-16:]} is expired")
+              if entry["expires"] and int(entry["expires"]) < now + 30 * 86400:
+                  days = int((int(entry["expires"]) - now) // 86400)
+                  print(f"::warning::{label} {entry['fpr'][-16:]} expires in {days} days", file=sys.stderr)
+
+          matches = [e for e in entries if e["fpr"].endswith(want)]
+          if not matches:
+              found = ", ".join(f"{e['kind']}:{e['fpr'][-16:]}" for e in entries)
+              raise SystemExit(f"::error::GPG_KEYID {want} does not match any key in MAVEN_GPG_PRIVATE_KEY (found: {found})")
+
+          match = matches[0]
+          primary = next(e for e in entries if e["kind"] == "sec" and e["fpr"] == match["primary"])
+          check(primary, "Primary key")
+          if match is not primary:
+              check(match, "Subkey")
+          print(f"GPG_KEYID matches {'primary key' if match is primary else 'subkey'} {match['fpr'][-16:]}", file=sys.stderr)
+          print(primary["fpr"])
+          PY
+          )
+
+          echo "madeitpx release preflight" > "$RUNNER_TEMP/gpg-payload.txt"
+          if ! gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 \
+                --local-user "$fpr" --armor --detach-sign \
+                --output "$RUNNER_TEMP/gpg-payload.asc" "$RUNNER_TEMP/gpg-payload.txt" 3<<<"$MAVEN_GPG_PASSPHRASE"; then
+            echo "::error::Test signing failed: wrong MAVEN_GPG_PASSPHRASE or the key cannot sign"
+            exit 1
+          fi
+          gpg --batch --verify "$RUNNER_TEMP/gpg-payload.asc" "$RUNNER_TEMP/gpg-payload.txt"
+          echo "Test signature OK"
+
+          found_on_keyserver=0
+          for url in \
+            "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x$fpr" \
+            "https://keys.openpgp.org/vks/v1/by-fingerprint/$fpr"; do
+            if curl -fsS --retry 3 --max-time 20 -o /dev/null "$url"; then
+              found_on_keyserver=1
+              echo "Public key found: ${url%%\?*}"
+            fi
+          done
+          if [ "$found_on_keyserver" -eq 0 ]; then
+            echo "::warning::Public key $fpr was not found on keyserver.ubuntu.com or keys.openpgp.org; Maven Central may reject the signature"
+          fi
+
   approve:
     if: github.event_name == 'push'
-    needs: [prepare-notes, build-native, verify-packages]
+    needs: [prepare-notes, build-native, verify-packages, verify-secrets]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment:
@@ -724,7 +842,16 @@ jobs:
             exit 1
           fi
           cargo update --manifest-path bindings/rust/Cargo.toml --workspace
-          cargo publish --manifest-path bindings/rust/Cargo.toml --allow-dirty
+          crate=$(cargo metadata --manifest-path bindings/rust/Cargo.toml --no-deps --format-version 1 \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print(next(p['name'] for p in d['packages'] if p['manifest_path'].endswith('bindings/rust/Cargo.toml')))")
+          status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+            -A "madeitpx-release (https://github.com/TamKungZ/madeitpx)" \
+            "https://crates.io/api/v1/crates/$crate/$version" || true)
+          if [ "$status" = "200" ]; then
+            echo "$crate@$version already published on crates.io, skipping"
+          else
+            cargo publish --manifest-path bindings/rust/Cargo.toml --allow-dirty
+          fi
 
   publish-java:
     needs: [create-release, build-native]
@@ -750,6 +877,7 @@ jobs:
         env:
           MAVEN_GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          GPG_KEYID: ${{ secrets.GPG_KEYID || vars.GPG_KEYID }}
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           printf '%s' "$MAVEN_GPG_PRIVATE_KEY" | gpg --batch --import
@@ -769,7 +897,7 @@ jobs:
           mvn --batch-mode --file bindings/java/pom.xml versions:set \
             -DnewVersion="$version" \
             -DgenerateBackupPoms=false
-          mvn --batch-mode --file bindings/java/pom.xml package
+          mvn --batch-mode --file bindings/java/pom.xml package -Dgpg.keyname="$GPG_KEYID"
           jar="bindings/java/target/madeitpx-$version.jar"
           if [ ! -f "$jar" ]; then
             echo "::error::$jar not found"
@@ -786,7 +914,19 @@ jobs:
           MAVEN_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-        run: mvn --batch-mode --file bindings/java/pom.xml deploy -DskipTests
+          GPG_KEYID: ${{ secrets.GPG_KEYID || vars.GPG_KEYID }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          group=$(mvn --batch-mode --quiet --file bindings/java/pom.xml -Dexpression=project.groupId -DforceStdout help:evaluate)
+          artifact=$(mvn --batch-mode --quiet --file bindings/java/pom.xml -Dexpression=project.artifactId -DforceStdout help:evaluate)
+          pom_url="https://repo1.maven.org/maven2/${group//./\/}/$artifact/$version/$artifact-$version.pom"
+          status=$(curl -s -o /dev/null -w '%{http_code}' -I --max-time 20 "$pom_url" || true)
+          if [ "$status" = "200" ]; then
+            echo "$group:$artifact:$version already on Maven Central, skipping deploy"
+          else
+            mvn --batch-mode --file bindings/java/pom.xml deploy -DskipTests -Dgpg.keyname="$GPG_KEYID"
+          fi
 
   summary:
     if: always()
@@ -795,6 +935,7 @@ jobs:
       - prepare-notes
       - build-native
       - verify-packages
+      - verify-secrets
       - approve
       - create-release
       - attach-native
