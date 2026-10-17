@@ -192,7 +192,7 @@ jobs:
             cp "native-assets/$rid/$library" "$package_dir/"
             cp LICENSE "$package_dir/LICENSE"
             node -e "const fs=require('node:fs'); const p=process.argv[1]; const m=JSON.parse(fs.readFileSync(p,'utf8')); m.version=process.argv[2]; fs.writeFileSync(p, JSON.stringify(m, null, 2)+'\n');" "$package_dir/package.json" "$version"
-            output=$(npm pack --dry-run "$package_dir" 2>&1)
+            output=$(npm pack --dry-run "./$package_dir" 2>&1)
             if ! grep -qF "$library" <<< "$output"; then
               echo "::error::npm package $package does not contain $library"
               echo "$output"
@@ -223,7 +223,7 @@ jobs:
           }
           fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
           JS
-          npm pack --dry-run bindings/node
+          npm pack --dry-run ./bindings/node
       - name: Verify NuGet package
         shell: bash
         env:
@@ -828,7 +828,7 @@ jobs:
           if [ "$status" -eq 0 ] && [ "$output" = "$version" ]; then
             echo "$name@$version already published, skipping"
           elif { [ "$status" -eq 0 ] && [ -z "$output" ]; } || grep -q "E404" <<< "$output"; then
-            npm publish "$package_dir" --access public
+            npm publish "./$package_dir" --access public
           else
             echo "$output"
             echo "::error::Could not check whether $name@$version is already published"
@@ -877,7 +877,7 @@ jobs:
           if [ "$status" -eq 0 ] && [ "$output" = "$version" ]; then
             echo "$name@$version already published, skipping"
           elif { [ "$status" -eq 0 ] && [ -z "$output" ]; } || grep -q "E404" <<< "$output"; then
-            npm publish bindings/node --access public
+            npm publish ./bindings/node --access public
           else
             echo "$output"
             echo "::error::Could not check whether $name@$version is already published"
