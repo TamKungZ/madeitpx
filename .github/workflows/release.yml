@@ -7,15 +7,23 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Dry run: tag to build and verify (vX.Y.Z). Nothing is released or published."
+        description: "Tag (vX.Y.Z). With publish off: dry run on the selected branch, nothing is released. With publish on: re-run the real release for this existing tag."
         required: true
         type: string
+      publish:
+        description: "Publish for real: re-run the release for an EXISTING tag (run this workflow from main; the tag's source is built, this workflow file is used)."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
+env:
+  SOURCE_REF: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish) && format('refs/tags/{0}', inputs.tag) || github.sha }}
+
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -29,17 +37,28 @@ jobs:
       - name: Validate tag
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          PUBLISH: ${{ inputs.publish }}
         run: |
           if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Tag $RELEASE_TAG is not strict semver (vX.Y.Z)"
             exit 1
           fi
-          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$PUBLISH" = "true" ]; then
+            if [ "$GITHUB_EVENT_NAME" != "push" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "::error::Publishing manually must be dispatched from main (got $GITHUB_REF)"
+              exit 1
+            fi
+            git fetch --tags --force origin
             git fetch origin main
-            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            if ! tag_sha=$(git rev-parse -q --verify "refs/tags/${RELEASE_TAG}^{commit}"); then
+              echo "::error::Tag $RELEASE_TAG does not exist in the repository"
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$tag_sha" origin/main; then
               echo "::error::Tag commit is not on main"
               exit 1
             fi
+            echo "::notice::Releasing $RELEASE_TAG from $tag_sha (event: $GITHUB_EVENT_NAME)"
           else
             echo "::notice::Dry run for $RELEASE_TAG on $GITHUB_REF_NAME ($GITHUB_SHA); nothing will be released"
           fi
@@ -50,6 +69,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_REF }}
       - name: Prepare release notes
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
@@ -119,6 +140,8 @@ jobs:
             library: zig-out/lib/libmadeitpx.dylib
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_REF }}
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
@@ -151,6 +174,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_REF }}
       - uses: actions/setup-node@v4
         with:
           node-version: 24.x
@@ -364,6 +389,8 @@ jobs:
           for rid in windows-x64 windows-arm64 linux-x64-gnu linux-arm64-gnu darwin-x64 darwin-arm64; do
             if ! grep -q "native/$rid/" <<< "$listing"; then
               echo "::error::JAR is missing native library for $rid"
+              echo "--- contents of $jar ---"
+              echo "$listing"
               exit 1
             fi
           done
@@ -487,7 +514,7 @@ jobs:
           fi
 
   approve:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.publish
     needs: [prepare-notes, build-native, verify-packages, verify-secrets, package-zip, package-deb, verify-deb-distros]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -526,6 +553,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_REF }}
       - uses: actions/download-artifact@v4
         with:
           pattern: madeitpx-native-*
@@ -586,6 +615,8 @@ jobs:
             triplet: aarch64-linux-gnu
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_REF }}
       - uses: actions/download-artifact@v4
         with:
           name: madeitpx-native-${{ matrix.rid }}
@@ -678,10 +709,20 @@ jobs:
           runtime="debs/libmadeitpx_${version}_${ARCH}.deb"
           dev="debs/libmadeitpx-dev_${version}_${ARCH}.deb"
           dpkg-deb --info "$runtime"
-          dpkg-deb --contents "$runtime"
-          dpkg-deb --contents "$dev"
-          dpkg-deb --contents "$runtime" | grep -q "usr/lib/$TRIPLET/libmadeitpx.so$"
-          dpkg-deb --contents "$dev" | grep -q "usr/include/madeitpx.h$"
+          # Capture listings first: with pipefail, `grep -q` closing the pipe early
+          # makes dpkg-deb/tar die with SIGPIPE ("tar: stdout: write error").
+          runtime_contents=$(dpkg-deb --contents "$runtime")
+          dev_contents=$(dpkg-deb --contents "$dev")
+          echo "$runtime_contents"
+          echo "$dev_contents"
+          if ! grep -q "usr/lib/$TRIPLET/libmadeitpx.so$" <<< "$runtime_contents"; then
+            echo "::error::$runtime is missing usr/lib/$TRIPLET/libmadeitpx.so"
+            exit 1
+          fi
+          if ! grep -q "usr/include/madeitpx.h$" <<< "$dev_contents"; then
+            echo "::error::$dev is missing usr/include/madeitpx.h"
+            exit 1
+          fi
           sudo dpkg -i "$runtime" "$dev"
           ldconfig -p | grep libmadeitpx
           printf '#include <madeitpx.h>\nint main(void) { return 0; }\n' \
@@ -793,6 +834,8 @@ jobs:
             package: darwin-arm64
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_REF }}
       - uses: actions/setup-node@v4
         with:
           node-version: 24.x
@@ -844,6 +887,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_REF }}
       - uses: actions/setup-node@v4
         with:
           node-version: 24.x
@@ -893,6 +938,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_REF }}
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
@@ -967,6 +1014,8 @@ jobs:
       url: https://pypi.org/p/madeitpx
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_REF }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -1030,6 +1079,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_REF }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/download-artifact@v4
         with:
@@ -1071,6 +1122,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_REF }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -1166,15 +1219,17 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
           EVENT_NAME: ${{ github.event_name }}
+          PUBLISH: ${{ inputs.publish }}
         run: |
           python3 - <<'PY'
           import json
           import os
 
           needs = json.loads(os.environ["NEEDS"])
+          dry_run = os.environ["EVENT_NAME"] == "workflow_dispatch" and os.environ.get("PUBLISH") != "true"
           lines = [
               f"## Release {os.environ['RELEASE_TAG']}"
-              + (" (dry run)" if os.environ["EVENT_NAME"] == "workflow_dispatch" else ""),
+              + (" (dry run)" if dry_run else ""),
               "",
               "| Job | Result |",
               "| --- | --- |",
