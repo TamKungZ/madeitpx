@@ -709,8 +709,6 @@ jobs:
           runtime="debs/libmadeitpx_${version}_${ARCH}.deb"
           dev="debs/libmadeitpx-dev_${version}_${ARCH}.deb"
           dpkg-deb --info "$runtime"
-          # Capture listings first: with pipefail, `grep -q` closing the pipe early
-          # makes dpkg-deb/tar die with SIGPIPE ("tar: stdout: write error").
           runtime_contents=$(dpkg-deb --contents "$runtime")
           dev_contents=$(dpkg-deb --contents "$dev")
           echo "$runtime_contents"
@@ -798,10 +796,26 @@ jobs:
           path: release-assets
           merge-multiple: true
       - name: Create checksums
+        env:
+          MAVEN_GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          GPG_KEYID: ${{ secrets.GPG_KEYID || vars.GPG_KEYID }}
         run: |
+          set -euo pipefail
+          export GNUPGHOME="$(mktemp -d)"
+          chmod 700 "$GNUPGHOME"
+          trap 'gpgconf --kill gpg-agent >/dev/null 2>&1 || true; rm -rf "$GNUPGHOME"' EXIT
+
+          printf '%s' "$MAVEN_GPG_PRIVATE_KEY" | gpg --batch --import
           cd release-assets
           ls -la
           sha256sum *.zip *.deb > SHA256SUMS.txt
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-fd 3 --local-user "$GPG_KEYID" \
+            --armor --detach-sign \
+            --output SHA256SUMS.txt.asc SHA256SUMS.txt \
+            3<<<"$MAVEN_GPG_PASSPHRASE"
+          gpg --batch --verify SHA256SUMS.txt.asc SHA256SUMS.txt
       - name: Attach native archives and .deb packages to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -864,7 +878,6 @@ jobs:
           cp "$library" "$package_dir/"
           cp LICENSE "$package_dir/LICENSE"
           version="${RELEASE_TAG#v}"
-          # npm provenance (trusted publishing) requires repository.url to match this GitHub repo.
           node -e "const fs=require('node:fs'); const p=process.argv[1]; const m=JSON.parse(fs.readFileSync(p,'utf8')); m.version=process.argv[2]; m.repository={type:'git',url:'git+https://github.com/'+process.env.GITHUB_REPOSITORY+'.git',directory:process.argv[3]}; fs.writeFileSync(p, JSON.stringify(m, null, 2)+'\n');" "$package_dir/package.json" "$version" "$package_dir"
           name=$(node -p "require('./$package_dir/package.json').name")
           status=0
@@ -911,7 +924,6 @@ jobs:
           const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
           const version = process.env.RELEASE_TAG.replace(/^v/, '');
           manifest.version = version;
-          // npm provenance (trusted publishing) requires repository.url to match this GitHub repo.
           manifest.repository = {
             type: 'git',
             url: `git+https://github.com/${process.env.GITHUB_REPOSITORY}.git`,
