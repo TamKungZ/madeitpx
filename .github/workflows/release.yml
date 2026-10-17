@@ -551,6 +551,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -561,9 +562,8 @@ jobs:
           pattern: madeitpx-native-*
           path: native-assets
           merge-multiple: true
-      - name: Pack and publish NuGet package
+      - name: Pack NuGet package
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           project="bindings/dotnet/src/MadeIt.PixelArt"
@@ -597,7 +597,16 @@ jobs:
               exit 1
             fi
           done
-          dotnet nuget push "${packages[0]}" \
+      - name: NuGet login (Trusted Publishing)
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: TamKungZ
+      - name: Publish NuGet package
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+        run: |
+          dotnet nuget push artifacts/*.nupkg \
             --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
