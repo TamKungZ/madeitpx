@@ -7,6 +7,7 @@ Notable changes to `madeitpx` are documented here.
 ### Fixed
 
 - Fixed the release workflow getting stuck in `release.yml`.
+- Added a GPG detached signature for `SHA256SUMS.txt` release checksums.
 
 ## [0.1.0] - 2026-10-17
 

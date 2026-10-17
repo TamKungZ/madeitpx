@@ -798,10 +798,26 @@ jobs:
           path: release-assets
           merge-multiple: true
       - name: Create checksums
+        env:
+          MAVEN_GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          GPG_KEYID: ${{ secrets.GPG_KEYID || vars.GPG_KEYID }}
         run: |
+          set -euo pipefail
+          export GNUPGHOME="$(mktemp -d)"
+          chmod 700 "$GNUPGHOME"
+          trap 'gpgconf --kill gpg-agent >/dev/null 2>&1 || true; rm -rf "$GNUPGHOME"' EXIT
+
+          printf '%s' "$MAVEN_GPG_PRIVATE_KEY" | gpg --batch --import
           cd release-assets
           ls -la
           sha256sum *.zip *.deb > SHA256SUMS.txt
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-fd 3 --local-user "$GPG_KEYID" \
+            --armor --detach-sign \
+            --output SHA256SUMS.txt.asc SHA256SUMS.txt \
+            3<<<"$MAVEN_GPG_PASSPHRASE"
+          gpg --batch --verify SHA256SUMS.txt.asc SHA256SUMS.txt
       - name: Attach native archives and .deb packages to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
