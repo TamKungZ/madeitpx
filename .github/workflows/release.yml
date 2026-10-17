@@ -797,7 +797,7 @@ jobs:
         with:
           node-version: 24.x
           registry-url: https://registry.npmjs.org
-          scope: "@madeit"
+          scope: "@madeitpx"
       - name: Check npm version
         run: |
           required=11.5.1
@@ -825,10 +825,16 @@ jobs:
           version="${RELEASE_TAG#v}"
           node -e "const fs=require('node:fs'); const p=process.argv[1]; const m=JSON.parse(fs.readFileSync(p,'utf8')); m.version=process.argv[2]; fs.writeFileSync(p, JSON.stringify(m, null, 2)+'\n');" "$package_dir/package.json" "$version"
           name=$(node -p "require('./$package_dir/package.json').name")
-          if npm view "$name@$version" version >/dev/null 2>&1; then
+          status=0
+          output=$(npm view "$name@$version" version 2>&1) || status=$?
+          if [ "$status" -eq 0 ] && [ "$output" = "$version" ]; then
             echo "$name@$version already published, skipping"
-          else
+          elif { [ "$status" -eq 0 ] && [ -z "$output" ]; } || grep -q "E404" <<< "$output"; then
             npm publish "$package_dir" --access public
+          else
+            echo "$output"
+            echo "::error::Could not check whether $name@$version is already published"
+            exit 1
           fi
 
   publish-node:
@@ -844,7 +850,7 @@ jobs:
         with:
           node-version: 24.x
           registry-url: https://registry.npmjs.org
-          scope: "@madeit"
+          scope: "@madeitpx"
       - name: Check npm version
         run: |
           required=11.5.1
@@ -870,10 +876,16 @@ jobs:
           JS
           version="${RELEASE_TAG#v}"
           name=$(node -p "require('./bindings/node/package.json').name")
-          if npm view "$name@$version" version >/dev/null 2>&1; then
+          status=0
+          output=$(npm view "$name@$version" version 2>&1) || status=$?
+          if [ "$status" -eq 0 ] && [ "$output" = "$version" ]; then
             echo "$name@$version already published, skipping"
-          else
+          elif { [ "$status" -eq 0 ] && [ -z "$output" ]; } || grep -q "E404" <<< "$output"; then
             npm publish bindings/node --access public
+          else
+            echo "$output"
+            echo "::error::Could not check whether $name@$version is already published"
+            exit 1
           fi
 
   publish-dotnet:
