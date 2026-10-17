@@ -2,7 +2,7 @@
   <PropertyGroup>
     <TargetFrameworks>net462;netstandard2.0;netstandard2.1;net10.0</TargetFrameworks>
     <PackageId>MadeIt.PixelArt</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Authors>TamKungZ_ &lt;dev@tamkungz.me&gt;</Authors>
     <Copyright>Copyright (c) 2026 TamKungZ_</Copyright>
     <Description>Managed .NET binding for the madeitpx pixel-art image conversion library.</Description>

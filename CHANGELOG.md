@@ -2,6 +2,12 @@
 
 Notable changes to `madeitpx` are documented here.
 
+## [0.1.1] - 2026-10-17
+
+### Fixed
+
+- Fixed the release workflow getting stuck in `release.yml`.
+
 ## [0.1.0] - 2026-10-17
 
 ### Added
