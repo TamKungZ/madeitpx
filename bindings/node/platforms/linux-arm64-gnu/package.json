@@ -1,11 +1,21 @@
 {
   "name": "@madeitpx/pixelart-linux-arm64-gnu",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Linux ARM64 glibc native library for @madeitpx/pixelart",
   "license": "MPL-2.0",
-  "os": ["linux"],
-  "cpu": ["arm64"],
-  "libc": ["glibc"],
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "libc": [
+    "glibc"
+  ],
   "main": "index.js",
-  "files": ["index.js", "libmadeitpx.so", "LICENSE"]
+  "files": [
+    "index.js",
+    "libmadeitpx.so",
+    "LICENSE"
+  ]
 }
