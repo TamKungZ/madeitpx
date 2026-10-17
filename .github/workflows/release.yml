@@ -796,8 +796,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24.x
-          registry-url: https://registry.npmjs.org
-          scope: "@madeitpx"
       - name: Check npm version
         run: |
           required=11.5.1
@@ -849,8 +847,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24.x
-          registry-url: https://registry.npmjs.org
-          scope: "@madeitpx"
       - name: Check npm version
         run: |
           required=11.5.1
