@@ -130,7 +130,10 @@ jobs:
         if: matrix.java
         run: mvn --batch-mode --file bindings/java/pom.xml test
       - name: Node.js tests
-        run: npm ci --prefix bindings/node && npm test --prefix bindings/node
+        run: |
+          node -e "const fs=require('node:fs');const f='bindings/node/package.json';const m=JSON.parse(fs.readFileSync(f,'utf8'));delete m.optionalDependencies;fs.writeFileSync(f,JSON.stringify(m,null,2)+'\n')"
+          npm ci --prefix bindings/node
+          npm test --prefix bindings/node
       - name: Python tests
         run: |
           d="bindings/python/src/madeitpx/native/${{ matrix.rid }}"
