@@ -1,5 +1,5 @@
 {
-  "name": "@madeit/pixelart",
+  "name": "@madeitpx/pixelart",
   "version": "0.1.0",
   "description": "Node.js binding for the madeitpx pixel-art image conversion library",
   "license": "MPL-2.0",
@@ -34,11 +34,14 @@
     "koffi": "^3.3.3"
   },
   "optionalDependencies": {
-    "@madeit/pixelart-darwin-arm64": "0.1.0",
-    "@madeit/pixelart-darwin-x64": "0.1.0",
-    "@madeit/pixelart-linux-arm64-gnu": "0.1.0",
-    "@madeit/pixelart-linux-x64-gnu": "0.1.0",
-    "@madeit/pixelart-win32-arm64": "0.1.0",
-    "@madeit/pixelart-win32-x64": "0.1.0"
+    "@madeitpx/pixelart-darwin-arm64": "0.1.0",
+    "@madeitpx/pixelart-darwin-x64": "0.1.0",
+    "@madeitpx/pixelart-linux-arm64-gnu": "0.1.0",
+    "@madeitpx/pixelart-linux-x64-gnu": "0.1.0",
+    "@madeitpx/pixelart-win32-arm64": "0.1.0",
+    "@madeitpx/pixelart-win32-x64": "0.1.0"
+  },
+  "allowScripts": {
+    "koffi@3.3.3": true
   }
 }

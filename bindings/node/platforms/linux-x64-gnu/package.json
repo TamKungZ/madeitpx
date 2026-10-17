@@ -1,7 +1,7 @@
 {
-  "name": "@madeit/pixelart-linux-x64-gnu",
+  "name": "@madeitpx/pixelart-linux-x64-gnu",
   "version": "0.1.0",
-  "description": "Linux x64 glibc native library for @madeit/pixelart",
+  "description": "Linux x64 glibc native library for @madeitpx/pixelart",
   "license": "MPL-2.0",
   "os": ["linux"],
   "cpu": ["x64"],

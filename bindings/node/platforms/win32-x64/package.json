@@ -1,7 +1,7 @@
 {
-  "name": "@madeit/pixelart-win32-x64",
+  "name": "@madeitpx/pixelart-win32-x64",
   "version": "0.1.0",
-  "description": "Windows x64 native library for @madeit/pixelart",
+  "description": "Windows x64 native library for @madeitpx/pixelart",
   "license": "MPL-2.0",
   "os": ["win32"],
   "cpu": ["x64"],
