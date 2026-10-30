@@ -6,7 +6,7 @@
 
   <groupId>me.tamkungz</groupId>
   <artifactId>madeitpx</artifactId>
-  <version>0.1.2</version>
+  <version>0.2.0</version>
   <name>madeitpx</name>
   <description>Java binding for the madeitpx pixel-art image conversion library.</description>
   <url>https://github.com/TamKungZ/madeitpx</url>
