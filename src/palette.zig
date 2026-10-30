@@ -189,11 +189,12 @@ fn paletteLimit(options: *const api.Options) usize {
         0 => 32,
         1 => 64,
         2 => 16,
+        3 => 16,
         else => unreachable,
     };
 }
 
-fn buildPalette(pixels: [*]u8, pixel_count: usize, limit: usize, indices: []usize) Palette {
+pub fn buildPalette(pixels: [*]u8, pixel_count: usize, limit: usize, indices: []usize) Palette {
     var buckets: [max_colors]Bucket = undefined;
     var palette: [max_colors][3]u8 = undefined;
     var unique_colors: [max_colors][3]u8 = undefined;
