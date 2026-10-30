@@ -1,4 +1,4 @@
-export type Preset = 'balanced' | 'detail' | 'bold';
+export type Preset = 'balanced' | 'detail' | 'bold' | 'pixelart';
 export type SamplingMode = 'area' | 'nearest';
 
 export interface ConverterConfiguration {
