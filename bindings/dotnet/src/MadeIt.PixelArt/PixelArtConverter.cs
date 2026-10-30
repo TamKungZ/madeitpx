@@ -7,7 +7,8 @@ namespace MadeIt.PixelArt
     {
         Balanced = 0,
         Detail = 1,
-        Bold = 2
+        Bold = 2,
+        Pixelart = 3
     }
 
     public enum SamplingMode : uint
