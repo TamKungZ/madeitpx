@@ -45,6 +45,17 @@ Assert(transparent[0] == 0x12 && transparent[1] == 0x34 && transparent[2] == 0x5
     "Transparent input is composited onto the configured background.");
 Assert(transparent[3] == 255, "Composited output is opaque.");
 
+byte[] pixelart = PixelArtConverter.Convert(
+    new byte[] { 90, 120, 150, 255 },
+    1,
+    1,
+    4,
+    1,
+    1,
+    new ConversionOptions { Preset = ConversionPreset.Pixelart, PaletteColors = 2 });
+Assert(pixelart.Length == 4 && pixelart[0] == 90 && pixelart[1] == 120 &&
+    pixelart[2] == 150 && pixelart[3] == 255, "Pixelart preset conversion succeeds.");
+
 Expect<ArgumentException>(
     () => PixelArtConverter.Convert(new byte[3], 1, 1, 4, 1, 1),
     "Undersized input is rejected.");
