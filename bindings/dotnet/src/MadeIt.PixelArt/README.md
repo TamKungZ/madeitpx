@@ -41,6 +41,9 @@ Pass `ConversionOptions` to set a preset or palette size, choose area or nearest
 sampling, set the compositing background (`0xRRGGBB`), or disable cluster
 cleanup. Defaults are balanced palette, nearest sampling, black background,
 and cleanup enabled.
+Use `ConversionPreset.Pixelart` for outline-preserving conversion and
+structure cleanup. It uses 16 palette colors by default and ignores sampling.
+See the [pixelart preset documentation](../../../../docs/PIXELART.md) for details.
 
 ## Target frameworks
 
