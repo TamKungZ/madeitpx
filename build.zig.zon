@@ -1,7 +1,7 @@
 .{
     .name = .madeitpx,
-    .version = "0.1.2",
+    .version = "0.2.0",
     .fingerprint = 0xa58d60de3ef71636,
     .minimum_zig_version = "0.17.0",
-    .paths = .{ "build.zig", "build.zig.zon", "src", "include", "README.md", "CHANGELOG.md", "LICENSE" },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "include", "docs", "README.md", "CHANGELOG.md", "LICENSE" },
 }
