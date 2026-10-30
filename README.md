@@ -38,7 +38,9 @@ The conversion has three stages:
    default. Area sampling combines the covered source pixels, weighting color
    by alpha.
 2. **Palette reduction** groups sampled colors into a palette and maps each
-   output pixel to its nearest palette color.
+   output pixel to its nearest palette color. The `pixelart` preset instead
+   preserves dark outlines and cleans up small regions; see [the pixelart
+   preset documentation](docs/PIXELART.md).
 3. **Cluster cleanup**, enabled by default, replaces isolated pixels when a
    sufficiently large group of nearby pixels has a similar color. Strong
    color differences are left alone.
@@ -54,11 +56,14 @@ then change the fields you need.
 
 | Option | Behavior |
 |---|---|
-| `preset` | Selects a default palette limit: balanced (32), detail (64), or bold (16) colors. |
+| `preset` | Selects a default palette limit: balanced (32), detail (64), or bold (16) colors. The `pixelart` preset uses 16 colors by default and prioritizes outline preservation and pixel-art structure. |
 | `palette_colors` | Overrides the preset limit with a value from 2 to 64; zero uses the preset. |
 | `sample_mode` | Chooses nearest or area sampling. Defaults to nearest. |
 | `background_rgb` | Sets the opaque compositing color as `0xRRGGBB`. Defaults to black. |
 | `cluster_cleanup` | Enables (`1`) or disables (`0`) cleanup of isolated, similar-colored pixels. Defaults to enabled. |
+
+With the `pixelart` preset, `sample_mode` is ignored and `cluster_cleanup`
+controls its structure cleanup stage. Its `palette_colors` default is 16.
 
 ## C interface
 
