@@ -45,5 +45,8 @@ rows may include padding by setting `inputStride`. Conversion options include
 `preset`, `paletteColors`, `backgroundRgb`, `sampling`, and `clusterCleanup`.
 The defaults are balanced palette, nearest sampling, black background, and
 cluster cleanup enabled.
+Use `preset: 'pixelart'` for outline-preserving conversion and structure
+cleanup; it uses 16 palette colors by default and ignores `sampling`. See the
+[pixelart preset documentation](../../docs/PIXELART.md) for details.
 
 Node.js 18 or newer is required.
