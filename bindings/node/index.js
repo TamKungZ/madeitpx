@@ -14,7 +14,8 @@ const STATUS = Object.freeze({
 const PRESETS = Object.freeze({
   balanced: 0,
   detail: 1,
-  bold: 2
+  bold: 2,
+  pixelart: 3
 });
 
 const SAMPLE_MODES = Object.freeze({
@@ -93,7 +94,7 @@ function validateOptions(options) {
   const clusterCleanup = options.clusterCleanup === undefined ? true : options.clusterCleanup;
 
   if (!Object.prototype.hasOwnProperty.call(PRESETS, preset)) {
-    throw new RangeError('preset must be balanced, detail, or bold');
+    throw new RangeError('preset must be balanced, detail, bold, or pixelart');
   }
   if (!Object.prototype.hasOwnProperty.call(SAMPLE_MODES, sampling)) {
     throw new RangeError('sampling must be nearest or area');
