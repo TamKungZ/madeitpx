@@ -13,7 +13,7 @@ RGBA8 pixel buffers to an output grid with a limited color palette.
 
 ```toml
 [dependencies]
-madeitpx = "0.1.2"
+madeitpx = "0.2.0"
 ```
 
 ```rust
@@ -36,3 +36,6 @@ builds, set `MADEITPX_LIBRARY_PATH` to a native library path.
 `input_stride` is specified in bytes; pass `None` for tightly packed rows.
 Options control the palette preset and size, sampling mode, background color,
 and cluster cleanup.
+Use `Preset::Pixelart` for outline-preserving conversion and structure cleanup.
+It uses 16 palette colors by default and ignores the sampling mode. See the
+[pixelart preset documentation](../../docs/PIXELART.md) for details.
