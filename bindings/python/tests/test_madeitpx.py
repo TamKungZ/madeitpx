@@ -42,6 +42,18 @@ class MadeItPxTests(unittest.TestCase):
         self.assertEqual(result, bytes((0x12, 0x34, 0x56, 255)))
 
     @unittest.skipUnless(os.environ.get("MADEITPX_LIBRARY_PATH"), "native library path not set")
+    def test_converts_with_pixelart_preset(self):
+        result = convert_rgba8(
+            bytes((90, 120, 150, 255)),
+            1,
+            1,
+            1,
+            1,
+            options=ConversionOptions(preset=Preset.PIXELART, palette_colors=2),
+        )
+        self.assertEqual(result, bytes((90, 120, 150, 255)))
+
+    @unittest.skipUnless(os.environ.get("MADEITPX_LIBRARY_PATH"), "native library path not set")
     def test_accepts_padded_rows_and_memoryviews(self):
         source = memoryview(bytes((
             255, 0, 0, 255, 0, 255, 0, 255, 9, 9, 9, 9,
