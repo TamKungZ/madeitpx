@@ -3,6 +3,7 @@ const std = @import("std");
 const api = @import("api_types.zig");
 const sampling = @import("sampling.zig");
 const palette_mod = @import("palette.zig");
+const pixelart = @import("pixelart.zig");
 
 pub const Status = api.Status;
 pub const Preset = api.Preset;
@@ -29,7 +30,7 @@ fn validOptions(options: *const Options) bool {
     return options.struct_size >= @sizeOf(Options) and
         options.reserved == 0 and
         (options.palette_colors == 0 or (options.palette_colors >= 2 and options.palette_colors <= max_palette_colors)) and
-        options.preset <= @backingInt(Preset.bold) and
+        options.preset <= @backingInt(Preset.pixelart) and
         options.sample_mode <= @backingInt(SampleMode.nearest) and
         options.cluster_cleanup <= 1;
 }
@@ -95,6 +96,9 @@ export fn madeitpx_convert_rgba8(
 
     const required_output_size = rgbaSize(target_width, target_height) orelse return .size_overflow;
     if (output_capacity < required_output_size) return .buffer_too_small;
+    if (config.preset == @backingInt(Preset.pixelart)) {
+        return pixelart.convert(source, input_width, input_height, input_stride, target_width, target_height, config, destination);
+    }
     const output_pixel_count = required_output_size / 4;
     const indices = std.heap.page_allocator.alloc(usize, output_pixel_count) catch return .out_of_memory;
     defer std.heap.page_allocator.free(indices);
@@ -222,5 +226,31 @@ test "conversion validates options and buffer lengths" {
     try std.testing.expectEqual(
         Status.invalid_argument,
         madeitpx_convert_rgba8(&input, input.len, 1, 1, 4, 1, 1, &options, &output, output.len),
+    );
+}
+
+test "pixelart preset is accepted by the public entry point" {
+    var options: Options = undefined;
+    _ = madeitpx_options_init(&options);
+    options.preset = @backingInt(Preset.pixelart);
+    var input: [4 * 4 * 4]u8 = undefined;
+    for (0..16) |pixel| {
+        input[pixel * 4] = 90;
+        input[pixel * 4 + 1] = 120;
+        input[pixel * 4 + 2] = 150;
+        input[pixel * 4 + 3] = 255;
+    }
+    var output: [2 * 2 * 4]u8 = undefined;
+    try std.testing.expectEqual(
+        Status.ok,
+        madeitpx_convert_rgba8(&input, input.len, 4, 4, 16, 2, 2, &options, &output, output.len),
+    );
+    for (0..4) |pixel| {
+        try std.testing.expectEqualSlices(u8, &[_]u8{ 90, 120, 150, 255 }, output[pixel * 4 .. pixel * 4 + 4]);
+    }
+    options.preset = 4;
+    try std.testing.expectEqual(
+        Status.invalid_argument,
+        madeitpx_convert_rgba8(&input, input.len, 4, 4, 16, 2, 2, &options, &output, output.len),
     );
 }
