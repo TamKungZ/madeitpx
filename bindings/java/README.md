@@ -14,7 +14,7 @@ Java binding for [madeitpx](https://github.com/TamKungZ/madeitpx).
 <dependency>
   <groupId>me.tamkungz</groupId>
   <artifactId>madeitpx</artifactId>
-  <version>0.1.2</version>
+  <version>0.2.0</version>
 </dependency>
 ```
 
@@ -27,6 +27,9 @@ byte[] output = MadeItPx.convert(rgba, 2, 2, 1, 1);
 The input and output are tightly packed RGBA8 byte arrays. The overload with
 `inputStride` supports padded input rows; conversion settings are provided with
 `MadeItPx.Options`.
+Select `MadeItPx.Preset.PIXELART` to preserve outlines and clean up small
+regions; it uses 16 palette colors by default and ignores sampling. See the
+[pixelart preset documentation](../../docs/PIXELART.md) for details.
 
 Release JARs include native libraries for supported Windows, Linux (glibc), and
 macOS x64 and ARM64 platforms. The binding extracts the matching library when
