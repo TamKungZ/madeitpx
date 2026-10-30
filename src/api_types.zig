@@ -10,6 +10,7 @@ pub const Preset = enum(u32) {
     balanced = 0,
     detail = 1,
     bold = 2,
+    pixelart = 3,
 };
 
 pub const SampleMode = enum(u32) {
