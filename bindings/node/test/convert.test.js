@@ -28,6 +28,20 @@ test('converts RGBA8 input using the native library', { skip: !libraryPath }, ()
   }
 });
 
+test('converts with the pixelart preset', { skip: !libraryPath }, () => {
+  const convert = createConverter({ libraryPath });
+  const output = convert(Buffer.from([90, 120, 150, 255]), {
+    inputWidth: 1,
+    inputHeight: 1,
+    targetWidth: 1,
+    targetHeight: 1,
+    preset: 'pixelart',
+    paletteColors: 2
+  });
+
+  assert.deepEqual([...output], [90, 120, 150, 255]);
+});
+
 test('accepts padded source rows', { skip: !libraryPath }, () => {
   const convert = createConverter({ libraryPath });
   const output = convert(Buffer.from([
