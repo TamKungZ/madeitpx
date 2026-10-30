@@ -960,7 +960,27 @@ jobs:
           if [ "$status" -eq 0 ] && [ "$output" = "$version" ]; then
             echo "$name@$version already published, skipping"
           elif { [ "$status" -eq 0 ] && [ -z "$output" ]; } || grep -q "E404" <<< "$output"; then
-            npm publish ./bindings/node --access public
+            publish_status=0
+            publish_output=$(npm publish ./bindings/node --access public 2>&1) || publish_status=$?
+            printf '%s\n' "$publish_output"
+            if [ "$publish_status" -ne 0 ]; then
+              if ! grep -q "TLOG_CREATE_ENTRY_ERROR" <<< "$publish_output"; then
+                exit "$publish_status"
+              fi
+
+              echo "::warning::npm provenance upload failed on a duplicate transparency-log entry; checking registry before retrying without provenance"
+              published_status=0
+              published=$(npm view "$name@$version" version 2>&1) || published_status=$?
+              if [ "$published_status" -eq 0 ] && [ "$published" = "$version" ]; then
+                echo "$name@$version was published despite the provenance error"
+              elif [ "$published_status" -ne 0 ] && grep -q "E404" <<< "$published"; then
+                npm publish ./bindings/node --access public --provenance=false
+              else
+                echo "$published"
+                echo "::error::Could not confirm whether $name@$version was published after the provenance error"
+                exit 1
+              fi
+            fi
           else
             echo "$output"
             echo "::error::Could not check whether $name@$version is already published"
@@ -1099,10 +1119,18 @@ jobs:
           if missing:
               raise SystemExit(f"Wheel is missing native libraries: {sorted(missing)}")
           PY
-      - name: Publish to PyPI
+      - name: Publish to PyPI with attestations
+        id: publish-pypi
+        continue-on-error: true
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
+      - name: Retry PyPI upload without attestations
+        if: steps.publish-pypi.outcome == 'failure'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+          attestations: false
       - name: Attach Python distributions to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
