@@ -21,7 +21,8 @@ public final class MadeItPx {
     public enum Preset {
         BALANCED,
         DETAIL,
-        BOLD
+        BOLD,
+        PIXELART
     }
 
     public enum Sampling {
