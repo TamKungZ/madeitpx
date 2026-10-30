@@ -2,6 +2,15 @@
 
 Notable changes to `madeitpx` are documented here.
 
+## [0.2.0] - 2026-10-31
+
+### Added
+
+- Added the `pixelart` preset for structure-first conversion that preserves dark
+  outlines, bridges short line gaps, and removes isolated or one-cell regions.
+- Added a Python reference prototype and documentation for the pixel-art
+  conversion pipeline.
+
 ## [0.1.2] - 2026-10-30
 
 ### Fixed
