@@ -14,7 +14,7 @@ pub fn build(b: *std.Build) void {
         .name = "madeitpx",
         .linkage = .dynamic,
         .root_module = root_module,
-        .version = .{ .major = 0, .minor = 1, .patch = 0 },
+        .version = .{ .major = 0, .minor = 1, .patch = 2 },
     });
     b.installArtifact(shared);
 

@@ -74,26 +74,36 @@ through `madeitpx_status`.
 
 ## .NET binding
 
-The [`MadeIt.PixelArt` binding](bindings/dotnet/src/MadeIt.PixelArt) targets
+The [`MadeIt.PixelArt` binding](bindings/dotnet/src/MadeIt.PixelArt) is published
+on [NuGet](https://www.nuget.org/packages/MadeIt.PixelArt) and targets
 .NET Framework 4.6.2, .NET Standard 2.0, .NET Standard 2.1, and .NET 10.0. Its
 NuGet package includes native libraries for Windows, Linux (glibc), and macOS
 on x64 and ARM64.
 
 ## Node.js binding
 
-The [`@madeit/pixelart` package](bindings/node) wraps the native C ABI and
-requires a separately built `madeitpx` shared library for the current platform
-and architecture.
+The [`@madeitpx/pixelart` package](bindings/node) is published on
+[npm](https://www.npmjs.com/package/@madeitpx/pixelart), wraps the native C ABI,
+and includes native libraries for supported platforms.
 
 ## Python binding
 
-The [`madeitpx` package](bindings/python) installs with pip and includes native
-libraries for Windows, Linux (glibc), and macOS on x64 and ARM64.
+The [`madeitpx` package](bindings/python) is published on
+[PyPI](https://pypi.org/project/madeitpx/), installs with pip, and includes
+native libraries for Windows, Linux (glibc), and macOS on x64 and ARM64.
 
 ## Rust binding
 
-The [`madeitpx` crate](bindings/rust) wraps the native C ABI and includes
-libraries for Windows, Linux (glibc), and macOS on x64 and ARM64.
+The [`madeitpx` crate](bindings/rust) is published on
+[crates.io](https://crates.io/crates/madeitpx), wraps the native C ABI, and
+includes libraries for Windows, Linux (glibc), and macOS on x64 and ARM64.
+
+## Java binding
+
+The [`me.tamkungz:madeitpx` binding](bindings/java) is published on
+[Maven Central](https://central.sonatype.com/artifact/me.tamkungz/madeitpx) and
+includes native libraries for Windows, Linux (glibc), and macOS on x64 and
+ARM64.
 
 ## Validation images
 

@@ -6,7 +6,7 @@
 
   <groupId>me.tamkungz</groupId>
   <artifactId>madeitpx</artifactId>
-  <version>0.1.1</version>
+  <version>0.1.2</version>
   <name>madeitpx</name>
   <description>Java binding for the madeitpx pixel-art image conversion library.</description>
   <url>https://github.com/TamKungZ/madeitpx</url>
@@ -135,7 +135,6 @@
         <configuration>
           <publishingServerId>central</publishingServerId>
           <autoPublish>true</autoPublish>
-          <waitUntil>published</waitUntil>
         </configuration>
       </plugin>
     </plugins>

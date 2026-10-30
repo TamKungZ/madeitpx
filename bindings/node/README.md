@@ -1,4 +1,4 @@
-# @madeit/pixelart
+# @madeitpx/pixelart
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/TamKungZ/madeitpx/main/assets/logo-wordmark.png" alt="madeitpx" width="240">
@@ -12,7 +12,7 @@ RGBA8 pixel buffers to an output grid with a limited color palette.
 </p>
 
 ```sh
-npm install @madeit/pixelart
+npm install @madeitpx/pixelart
 ```
 
 The package installs a native library for supported platforms: Windows x64 and
@@ -22,7 +22,7 @@ For local builds or custom locations, pass `libraryPath` when creating a
 converter or set `MADEITPX_LIBRARY_PATH`.
 
 ```js
-const { createConverter } = require('@madeit/pixelart');
+const { createConverter } = require('@madeitpx/pixelart');
 
 const convert = createConverter();
 

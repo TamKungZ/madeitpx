@@ -1,6 +1,6 @@
 {
   "name": "@madeitpx/pixelart-linux-arm64-gnu",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Linux ARM64 glibc native library for @madeitpx/pixelart",
   "license": "MPL-2.0",
   "os": [

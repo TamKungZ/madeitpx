@@ -34,12 +34,12 @@ const NATIVE_OPTIONS = koffi.struct('madeitpx_options', {
 
 function nativePackageName() {
   const platforms = {
-    'win32-x64': '@madeit/pixelart-win32-x64',
-    'win32-arm64': '@madeit/pixelart-win32-arm64',
-    'linux-x64': '@madeit/pixelart-linux-x64-gnu',
-    'linux-arm64': '@madeit/pixelart-linux-arm64-gnu',
-    'darwin-x64': '@madeit/pixelart-darwin-x64',
-    'darwin-arm64': '@madeit/pixelart-darwin-arm64'
+    'win32-x64': '@madeitpx/pixelart-win32-x64',
+    'win32-arm64': '@madeitpx/pixelart-win32-arm64',
+    'linux-x64': '@madeitpx/pixelart-linux-x64-gnu',
+    'linux-arm64': '@madeitpx/pixelart-linux-arm64-gnu',
+    'darwin-x64': '@madeitpx/pixelart-darwin-x64',
+    'darwin-arm64': '@madeitpx/pixelart-darwin-arm64'
   };
   const key = `${process.platform}-${process.arch}`;
   return platforms[key];
@@ -58,7 +58,7 @@ function resolveNativeLibrary(libraryPath) {
     return require(packageName);
   } catch (error) {
     if (error && error.code === 'MODULE_NOT_FOUND') {
-      throw new Error(`The native package ${packageName} is not installed; reinstall @madeit/pixelart for this platform`);
+      throw new Error(`The native package ${packageName} is not installed; reinstall @madeitpx/pixelart for this platform`);
     }
     throw error;
   }

@@ -394,6 +394,25 @@ jobs:
               exit 1
             fi
           done
+      - name: Test bindings against Linux x64 build
+        env:
+          MADEITPX_LIBRARY_PATH: ${{ github.workspace }}/native-assets/linux-x64-gnu/libmadeitpx.so
+        run: |
+          node -e "const fs=require('node:fs');const f='bindings/node/package.json';const m=JSON.parse(fs.readFileSync(f,'utf8'));delete m.optionalDependencies;fs.writeFileSync(f,JSON.stringify(m,null,2)+'\n')"
+          npm ci --prefix bindings/node
+          npm test --prefix bindings/node
+
+          mkdir -p bindings/python/src/madeitpx/native/linux-x64-gnu
+          cp "$MADEITPX_LIBRARY_PATH" bindings/python/src/madeitpx/native/linux-x64-gnu/
+          python -m pip install -e bindings/python
+          python -m unittest discover -s bindings/python/tests
+
+          cargo test --manifest-path bindings/rust/Cargo.toml
+
+          project=bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/MadeIt.PixelArt.SmokeTests.csproj
+          dotnet build "$project" -c Release
+          cp "$MADEITPX_LIBRARY_PATH" bindings/dotnet/tests/MadeIt.PixelArt.SmokeTests/bin/Release/net10.0/
+          dotnet run --project "$project" -c Release --no-build
 
   verify-secrets:
     needs: validate-tag

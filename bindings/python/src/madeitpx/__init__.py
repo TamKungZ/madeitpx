@@ -10,7 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional, Union
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 _UINT32_MAX = 0xFFFFFFFF
 _MAX_OUTPUT_SIZE = (1 << (struct.calcsize("P") * 8 - 1)) - 1
