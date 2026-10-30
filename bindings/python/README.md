@@ -40,6 +40,9 @@ result = convert_rgba8(
 Inputs may be `bytes`, `bytearray`, or `memoryview`. Set `input_stride` for
 padded source rows. Conversion options include `preset`, `palette_colors`,
 `background_rgb`, `sampling`, and `cluster_cleanup`.
+Use `Preset.PIXELART` for outline-preserving conversion and structure cleanup.
+It uses 16 palette colors by default and ignores the sampling option. See the
+[pixelart preset documentation](../../docs/PIXELART.md) for details.
 
 Python 3.9 or newer is required. Linux native libraries target glibc; musl
 Linux is not currently supported. For local builds, set
