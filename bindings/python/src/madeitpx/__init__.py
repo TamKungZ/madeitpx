@@ -10,7 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional, Union
 
-__version__ = "0.1.2"
+__version__ = "0.2.0"
 
 _UINT32_MAX = 0xFFFFFFFF
 _MAX_OUTPUT_SIZE = (1 << (struct.calcsize("P") * 8 - 1)) - 1
@@ -21,6 +21,7 @@ class Preset(IntEnum):
     BALANCED = 0
     DETAIL = 1
     BOLD = 2
+    PIXELART = 3
 
 
 class SamplingMode(IntEnum):
