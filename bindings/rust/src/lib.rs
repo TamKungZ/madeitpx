@@ -12,6 +12,7 @@ pub enum Preset {
     Balanced = 0,
     Detail = 1,
     Bold = 2,
+    Pixelart = 3,
 }
 
 #[repr(u32)]
@@ -382,5 +383,27 @@ mod tests {
         .expect("conversion should succeed");
         assert_eq!(output.len(), 16);
         assert!(output[3..].iter().step_by(4).all(|alpha| *alpha == 255));
+    }
+
+    #[test]
+    fn converts_with_pixelart_preset() {
+        if env::var_os("MADEITPX_LIBRARY_PATH").is_none() {
+            return;
+        }
+        let output = convert_rgba8(
+            &[90, 120, 150, 255],
+            1,
+            1,
+            None,
+            1,
+            1,
+            Options {
+                preset: Preset::Pixelart,
+                palette_colors: 2,
+                ..Options::default()
+            },
+        )
+        .expect("pixelart conversion should succeed");
+        assert_eq!(output, [90, 120, 150, 255]);
     }
 }
