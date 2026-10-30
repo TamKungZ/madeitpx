@@ -19,7 +19,8 @@ typedef enum madeitpx_status {
 typedef enum madeitpx_preset {
     MADEITPX_PRESET_BALANCED = 0,
     MADEITPX_PRESET_DETAIL = 1,
-    MADEITPX_PRESET_BOLD = 2
+    MADEITPX_PRESET_BOLD = 2,
+    MADEITPX_PRESET_PIXELART = 3
 } madeitpx_preset;
 
 typedef enum madeitpx_sample_mode {
