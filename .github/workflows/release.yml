@@ -195,6 +195,15 @@ jobs:
           pattern: madeitpx-native-*
           path: native-assets
           merge-multiple: true
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: Build WebAssembly module
+        shell: bash
+        run: |
+          zig build wasm
+          mkdir -p bindings/node/wasm
+          cp zig-out/wasm/madeitpx.wasm bindings/node/wasm/
       - name: Verify Node.js packages
         shell: bash
         env:
@@ -933,6 +942,15 @@ jobs:
             echo "::error::npm $current is older than $required (required for trusted publishing)"
             exit 1
           fi
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: Build WebAssembly module
+        shell: bash
+        run: |
+          zig build wasm
+          mkdir -p bindings/node/wasm
+          cp zig-out/wasm/madeitpx.wasm bindings/node/wasm/
       - name: Publish Node.js package
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
