@@ -23,6 +23,44 @@ const SAMPLE_MODES = Object.freeze({
   nearest: 1
 });
 
+const PIXELART_MODES = Object.freeze({
+  auto: 0,
+  grid: 1,
+  illustration: 2
+});
+
+const PIXELART_FIELDS = Object.freeze([
+  { key: 'version', native: 'version', kind: 'int' },
+  { key: 'mode', native: 'mode', kind: 'mode' },
+  { key: 'gridFit', native: 'grid_fit', kind: 'bool' },
+  { key: 'gridSearchPermille', native: 'grid_search_permille', kind: 'int' },
+  { key: 'sampleInsetPercent', native: 'sample_inset_percent', kind: 'int' },
+  { key: 'colorTolerance', native: 'color_tolerance', kind: 'int' },
+  { key: 'paletteMax', native: 'palette_max', kind: 'int' },
+  { key: 'refineIterations', native: 'refine_iterations', kind: 'int' },
+  { key: 'inkPercent', native: 'ink_percent', kind: 'int' },
+  { key: 'minRegion', native: 'min_region', kind: 'int' },
+  { key: 'alphaThreshold', native: 'alpha_threshold', kind: 'int' },
+  { key: 'keepTransparency', native: 'keep_transparency', kind: 'bool' }
+]);
+
+const NATIVE_PIXELART_OPTIONS = koffi.struct('madeitpx_pixelart_options', {
+  struct_size: 'uint32_t',
+  version: 'uint32_t',
+  grid_fit: 'uint32_t',
+  grid_search_permille: 'uint32_t',
+  sample_inset_percent: 'uint32_t',
+  color_tolerance: 'uint32_t',
+  palette_max: 'uint32_t',
+  refine_iterations: 'uint32_t',
+  mode: 'uint32_t',
+  ink_percent: 'uint32_t',
+  min_region: 'uint32_t',
+  alpha_threshold: 'uint32_t',
+  keep_transparency: 'uint32_t',
+  reserved: 'uint32_t'
+});
+
 const NATIVE_OPTIONS = koffi.struct('madeitpx_options', {
   struct_size: 'uint32_t',
   preset: 'uint32_t',
@@ -118,12 +156,56 @@ function validateOptions(options) {
   };
 }
 
+function validatePixelArt(settings) {
+  if (settings === undefined) return {};
+  if (settings === null || typeof settings !== 'object' || Array.isArray(settings)) {
+    throw new TypeError('pixelart must be an object');
+  }
+  const known = new Set(PIXELART_FIELDS.map((field) => field.key));
+  for (const key of Object.keys(settings)) {
+    if (!known.has(key)) throw new TypeError(`unknown pixelart setting: ${key}`);
+  }
+  const overrides = {};
+  for (const field of PIXELART_FIELDS) {
+    const value = settings[field.key];
+    if (value === undefined) continue;
+    if (field.kind === 'bool') {
+      if (typeof value !== 'boolean') throw new TypeError(`pixelart.${field.key} must be a boolean`);
+      overrides[field.native] = value ? 1 : 0;
+    } else if (field.kind === 'mode') {
+      if (!Object.prototype.hasOwnProperty.call(PIXELART_MODES, value)) {
+        throw new RangeError('pixelart.mode must be auto, grid, or illustration');
+      }
+      overrides[field.native] = PIXELART_MODES[value];
+    } else {
+      if (!Number.isInteger(value) || value < 0 || value > 0xffffffff) {
+        throw new RangeError(`pixelart.${field.key} must be a non-negative integer`);
+      }
+      overrides[field.native] = value;
+    }
+  }
+  return overrides;
+}
+
+function decodePixelArt(native) {
+  const result = {};
+  for (const field of PIXELART_FIELDS) {
+    const value = native[field.native];
+    if (field.kind === 'bool') result[field.key] = value === 1;
+    else if (field.kind === 'mode') result[field.key] = Object.keys(PIXELART_MODES).find((name) => PIXELART_MODES[name] === value);
+    else result[field.key] = value;
+  }
+  return result;
+}
+
 function createNativeBindings(libraryPath) {
   const library = koffi.load(resolveNativeLibrary(libraryPath));
 
   return {
     optionsInit: library.func('int madeitpx_options_init(_Out_ madeitpx_options *options)'),
     getOutputSize: library.func('int madeitpx_get_output_size(uint32_t target_width, uint32_t target_height, _Out_ size_t *output_size)'),
+    pixelartInit: library.func('int madeitpx_pixelart_options_init(_Out_ madeitpx_pixelart_options *options)'),
+    convertPixelart: library.func('int madeitpx_convert_pixelart_rgba8(const uint8_t *input, size_t input_size, uint32_t input_width, uint32_t input_height, size_t input_stride, uint32_t target_width, uint32_t target_height, const madeitpx_options *options, const madeitpx_pixelart_options *pixelart, uint8_t *output, size_t output_capacity)'),
     convert: library.func('int madeitpx_convert_rgba8(const uint8_t *input, size_t input_size, uint32_t input_width, uint32_t input_height, size_t input_stride, uint32_t target_width, uint32_t target_height, const madeitpx_options *options, uint8_t *output, size_t output_capacity)')
   };
 }
@@ -134,7 +216,18 @@ function createConverter(configuration = {}) {
   }
   const bindings = createNativeBindings(configuration.libraryPath);
 
-  return function convertRgba8(input, settings = {}) {
+  function pixelartDefaults() {
+    const pointer = koffi.alloc(NATIVE_PIXELART_OPTIONS, 1);
+    try {
+      const status = bindings.pixelartInit(pointer);
+      if (status !== STATUS.ok) throw statusError(status);
+      return decodePixelArt(koffi.decode(pointer, NATIVE_PIXELART_OPTIONS));
+    } finally {
+      koffi.free(pointer);
+    }
+  }
+
+  function convertRgba8(input, settings = {}) {
     if (!(input instanceof Uint8Array)) {
       throw new TypeError('input must be a Uint8Array or Buffer containing RGBA8 pixels');
     }
@@ -163,8 +256,10 @@ function createConverter(configuration = {}) {
     }
 
     const options = validateOptions(settings);
+    const pixelartOverrides = validatePixelArt(settings.pixelart);
     const nativeOptions = koffi.alloc(NATIVE_OPTIONS, 1);
     let outputSizePointer;
+    let nativePixelart;
     try {
       let status = bindings.optionsInit(nativeOptions);
       if (status !== STATUS.ok) throw statusError(status);
@@ -184,31 +279,59 @@ function createConverter(configuration = {}) {
         throw new RangeError('output exceeds the maximum Buffer size');
       }
 
+      let nativePixelartValue;
+      if (options.preset === PRESETS.pixelart) {
+        nativePixelart = koffi.alloc(NATIVE_PIXELART_OPTIONS, 1);
+        status = bindings.pixelartInit(nativePixelart);
+        if (status !== STATUS.ok) throw statusError(status);
+        nativePixelartValue = Object.assign(koffi.decode(nativePixelart, NATIVE_PIXELART_OPTIONS), pixelartOverrides);
+        koffi.encode(nativePixelart, NATIVE_PIXELART_OPTIONS, nativePixelartValue);
+      }
+
       const source = Buffer.from(input.buffer, input.byteOffset, input.byteLength);
       const output = Buffer.allocUnsafe(outputSize);
-      status = bindings.convert(
-        source,
-        source.byteLength,
-        inputWidth,
-        inputHeight,
-        inputStride,
-        targetWidth,
-        targetHeight,
-        nativeOptions,
-        output,
-        output.length
-      );
+      status = nativePixelart
+        ? bindings.convertPixelart(
+            source,
+            source.byteLength,
+            inputWidth,
+            inputHeight,
+            inputStride,
+            targetWidth,
+            targetHeight,
+            nativeOptions,
+            nativePixelart,
+            output,
+            output.length
+          )
+        : bindings.convert(
+            source,
+            source.byteLength,
+            inputWidth,
+            inputHeight,
+            inputStride,
+            targetWidth,
+            targetHeight,
+            nativeOptions,
+            output,
+            output.length
+          );
       if (status !== STATUS.ok) throw statusError(status);
       return output;
     } finally {
+      if (nativePixelart) koffi.free(nativePixelart);
       if (outputSizePointer) koffi.free(outputSizePointer);
       koffi.free(nativeOptions);
     }
-  };
+  }
+
+  convertRgba8.pixelartDefaults = pixelartDefaults;
+  return convertRgba8;
 }
 
 module.exports = {
   createConverter,
   presets: PRESETS,
+  pixelartModes: PIXELART_MODES,
   samplingModes: SAMPLE_MODES
 };

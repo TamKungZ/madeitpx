@@ -13,14 +13,27 @@
   "types": "index.d.ts",
   "exports": {
     ".": {
+      "browser": {
+        "types": "./browser.d.ts",
+        "default": "./browser.mjs"
+      },
       "types": "./index.d.ts",
       "require": "./index.js",
       "default": "./index.js"
-    }
+    },
+    "./browser": {
+      "types": "./browser.d.ts",
+      "default": "./browser.mjs"
+    },
+    "./madeitpx.wasm": "./wasm/madeitpx.wasm",
+    "./package.json": "./package.json"
   },
   "files": [
     "index.js",
     "index.d.ts",
+    "browser.mjs",
+    "browser.d.ts",
+    "wasm/madeitpx.wasm",
     "README.md",
     "LICENSE"
   ],
@@ -43,5 +56,7 @@
   },
   "allowScripts": {
     "koffi@3.3.3": true
-  }
+  },
+  "browser": "./browser.mjs",
+  "sideEffects": false
 }

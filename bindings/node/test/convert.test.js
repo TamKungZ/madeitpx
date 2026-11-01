@@ -93,3 +93,20 @@ test('rejects invalid arguments', { skip: !libraryPath }, () => {
     /paletteColors/
   );
 });
+
+test('exposes pixelart defaults from the native library', { skip: !libraryPath }, () => {
+  const convert = createConverter({ libraryPath });
+  const defaults = convert.pixelartDefaults();
+  assert.equal(defaults.version, 2);
+  assert.equal(defaults.mode, 'auto');
+  assert.equal(defaults.keepTransparency, true);
+});
+
+test('pixelart version 1 can be selected and bad settings are rejected', { skip: !libraryPath }, () => {
+  const convert = createConverter({ libraryPath });
+  const base = { inputWidth: 1, inputHeight: 1, targetWidth: 1, targetHeight: 1, preset: 'pixelart' };
+  const input = Buffer.from([90, 120, 150, 255]);
+  assert.deepEqual([...convert(input, { ...base, pixelart: { version: 1 } })], [90, 120, 150, 255]);
+  assert.throws(() => convert(input, { ...base, pixelart: { paletteMax: 1 } }), { code: 'invalidArgument' });
+  assert.throws(() => convert(input, { ...base, pixelart: { unknown: 1 } }), TypeError);
+});
