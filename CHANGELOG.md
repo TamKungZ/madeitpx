@@ -6,8 +6,11 @@ Notable changes to `madeitpx` are documented here.
 
 ### Added
 
+- Reorganised `src/` into `api/`, `core/`, `common/` and `pixelart/` (`v1.zig`, `v2/`).
 - Added version 2 of the `pixelart` preset, which recovers the real pixel grid of scaled-up
-  pixel art, and `madeitpx_convert_pixelart_rgba8` with detailed settings and per-field reset.
+  pixel art and reduces smooth artwork with preserved outlines and merged shading regions
+  (`mode` picks automatically), and `madeitpx_convert_pixelart_rgba8` with detailed settings and
+  per-field reset. Pixels with faint alpha are ignored (`alpha_threshold`) instead of being blended into the background.
   Version 1 stays available (`version = 1`) and remains what `preset = 3` runs in `madeitpx_convert_rgba8`.
 
 ## [0.2.0] - 2026-10-31

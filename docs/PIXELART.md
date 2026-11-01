@@ -15,34 +15,43 @@ Select with `options.preset = 3` (`Preset.pixelart`). Struct layout and ABI vers
 - Intentional single-pixel details (a 1px highlight in an eye, a lone sparkle) are removed. That is the requested behaviour.
 - Lines thinner than ~12% of a cell, or with a gap > 2 cells and no source evidence, are not recovered.
 - Dense hair-like strokes closer together than the output grid cannot stay separate; they become a hatch pattern.
-- `docs/pixelart_prototype/` is a Python reference for stages 1, 2 and 4. Its palette step is its own median-cut, so palettes can differ from the Zig build (which reuses `palette.zig`).
 
-## Version 2 (grid recovery)
+## Version 2
 
 `madeitpx_convert_pixelart_rgba8` takes a `madeitpx_pixelart_options` next to the usual options.
 `madeitpx_convert_rgba8` with preset 3 is unchanged and still runs version 1, so existing callers
 see no difference. Setting `version = 1` in the detailed options runs the same version 1 code.
+Version 2 shares no code with version 1. Its source lives in `src/pixelart/v2/`.
 
-Version 2 is for pixel art that was scaled up (non-integer factors, blur, JPEG noise) and should be
-brought back to its real pixel grid. It shares no code with version 1. Give it the real grid size
-as the target size (an 80x80 drawing upscaled to 256x256 uses target 80x80).
+`mode` picks what the source is. With `auto` (default) the grid search result decides: pixel art that
+was scaled up has strong edges exactly on its cell borders, smooth artwork does not.
 
-| Stage | What it does |
-|---|---|
-| Grid fit | Searches cell size (within `grid_search_permille` of source/target) and offset so cell borders land on image edges. |
-| Sampling | Per-channel median of each cell after ignoring `sample_inset_percent` of every cell edge. |
-| Palette | Cell colours within `color_tolerance` share a colour, merged down to `palette_max`, refined by `refine_iterations` k-means passes. |
-| Output | One flat colour per cell. Single-cell details are kept. |
-
-| Field | Default | Range |
+| Mode | Source | What happens |
 |---|---|---|
-| `version` | 2 | 1 or 2 |
-| `grid_fit` | 1 | 0 or 1 |
-| `grid_search_permille` | 30 | 0-200 |
-| `sample_inset_percent` | 25 | 0-45 |
-| `color_tolerance` | 14 | 0-442 |
-| `palette_max` | 0 (automatic) | 0 or 2-256 |
-| `refine_iterations` | 5 | 0-32 |
+| `grid` | Pixel art that was scaled up (non-integer factors, blur, JPEG noise) | The cell grid is recovered, each cell takes the median colour of its inner part, colours are merged into the real palette. Single-cell details are kept. Give the real grid size as the target size (an 80x80 drawing at 256x256 uses 80x80). |
+| `illustration` | Smooth or detailed artwork | Each cell is reduced by area. Dark outlines are detected per cell, thinned to one cell across and given their own palette colours. The rest uses at most 32 colours (or `palette_max`), then cells in a minority and regions smaller than `min_region` are merged into their neighbours, so shading never breaks into dots. |
+
+| Field | Default | Range | Used by |
+|---|---|---|---|
+| `version` | 2 | 1 or 2 | both |
+| `mode` | 0 (auto) | 0 auto, 1 grid, 2 illustration | both |
+| `grid_fit` | 1 | 0 or 1 | grid |
+| `grid_search_permille` | 30 | 0-200 | grid |
+| `sample_inset_percent` | 25 | 0-45 | grid |
+| `color_tolerance` | 14 | 0-442 | both |
+| `palette_max` | 0 (grid: automatic, illustration: 32) | 0 or 2-256 | both |
+| `refine_iterations` | 5 | 0-32 | both |
+| `ink_percent` | 20 | 0-100 (0 = no outlines) | illustration |
+| `min_region` | 4 | 1-64 (1 = off) | illustration |
+| `alpha_threshold` | 128 | 0-255 (0 = blend onto the background colour) | both |
+
+Pixels with alpha below `alpha_threshold` are ignored instead of being blended into the background, so
+faint fringes along a PNG's edge neither darken nor distort the outline. A cell is background when
+fewer than half of its pixels are solid, and it is written as the background colour.
 
 `madeitpx_pixelart_options_init` restores every field to its default, and
 `madeitpx_pixelart_options_reset_field` restores a single field.
+
+For artwork use a target size around a quarter of the source (1024x1536 to 256x384). Raise
+`palette_max` for more tones, lower `min_region` to keep finer shading, set `ink_percent` to 0 to
+drop outlines.
