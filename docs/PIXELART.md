@@ -44,10 +44,12 @@ was scaled up has strong edges exactly on its cell borders, smooth artwork does 
 | `ink_percent` | 20 | 0-100 (0 = no outlines) | illustration |
 | `min_region` | 4 | 1-64 (1 = off) | illustration |
 | `alpha_threshold` | 128 | 0-255 (0 = blend onto the background colour) | both |
+| `keep_transparency` | 1 | 0 or 1 | both |
 
 Pixels with alpha below `alpha_threshold` are ignored instead of being blended into the background, so
 faint fringes along a PNG's edge neither darken nor distort the outline. A cell is background when
-fewer than half of its pixels are solid, and it is written as the background colour.
+fewer than half of its pixels are solid. With `keep_transparency = 1` such cells are written with alpha 0
+(version 2 only; every other path stays opaque), otherwise as the opaque background colour.
 
 `madeitpx_pixelart_options_init` restores every field to its default, and
 `madeitpx_pixelart_options_reset_field` restores a single field.
