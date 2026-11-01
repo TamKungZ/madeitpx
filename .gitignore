@@ -6,7 +6,6 @@ ref/
 
 __pycache__/
 
-# .NET build outputs
 **/bin/
 **/obj/
 **/TestResults/
@@ -20,3 +19,5 @@ __pycache__/
 **/*.egg-info/
 bindings/python/build/
 bindings/python/dist/
+
+bindings/node/wasm/
