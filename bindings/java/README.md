@@ -14,7 +14,7 @@ Java binding for [madeitpx](https://github.com/TamKungZ/madeitpx).
 <dependency>
   <groupId>me.tamkungz</groupId>
   <artifactId>madeitpx</artifactId>
-  <version>0.2.0</version>
+  <version>0.2.1</version>
 </dependency>
 ```
 
