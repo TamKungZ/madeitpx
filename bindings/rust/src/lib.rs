@@ -22,6 +22,41 @@ pub enum SamplingMode {
     Nearest = 1,
 }
 
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PixelArtMode {
+    Auto = 0,
+    Grid = 1,
+    Illustration = 2,
+}
+
+impl PixelArtMode {
+    fn from_native(value: u32) -> Option<Self> {
+        match value {
+            0 => Some(Self::Auto),
+            1 => Some(Self::Grid),
+            2 => Some(Self::Illustration),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct PixelArtSettings {
+    pub version: Option<u32>,
+    pub mode: Option<PixelArtMode>,
+    pub grid_fit: Option<bool>,
+    pub grid_search_permille: Option<u32>,
+    pub sample_inset_percent: Option<u32>,
+    pub color_tolerance: Option<u32>,
+    pub palette_max: Option<u32>,
+    pub refine_iterations: Option<u32>,
+    pub ink_percent: Option<u32>,
+    pub min_region: Option<u32>,
+    pub alpha_threshold: Option<u32>,
+    pub keep_transparency: Option<bool>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Options {
     pub preset: Preset,
@@ -29,6 +64,7 @@ pub struct Options {
     pub background_rgb: u32,
     pub sampling: SamplingMode,
     pub cluster_cleanup: bool,
+    pub pixelart: PixelArtSettings,
 }
 
 impl Default for Options {
@@ -39,6 +75,7 @@ impl Default for Options {
             background_rgb: 0,
             sampling: SamplingMode::Nearest,
             cluster_cleanup: true,
+            pixelart: PixelArtSettings::default(),
         }
     }
 }
@@ -91,6 +128,39 @@ struct NativeOptions {
     reserved: u32,
 }
 
+#[repr(C)]
+#[derive(Default)]
+struct NativePixelArtOptions {
+    struct_size: u32,
+    version: u32,
+    grid_fit: u32,
+    grid_search_permille: u32,
+    sample_inset_percent: u32,
+    color_tolerance: u32,
+    palette_max: u32,
+    refine_iterations: u32,
+    mode: u32,
+    ink_percent: u32,
+    min_region: u32,
+    alpha_threshold: u32,
+    keep_transparency: u32,
+    reserved: u32,
+}
+
+type PixelArtInit = unsafe extern "C" fn(*mut NativePixelArtOptions) -> i32;
+type ConvertPixelArt = unsafe extern "C" fn(
+    *const u8,
+    usize,
+    u32,
+    u32,
+    usize,
+    u32,
+    u32,
+    *const NativeOptions,
+    *const NativePixelArtOptions,
+    *mut u8,
+    usize,
+) -> i32;
 type OptionsInit = unsafe extern "C" fn(*mut NativeOptions) -> i32;
 type GetOutputSize = unsafe extern "C" fn(u32, u32, *mut usize) -> i32;
 type ConvertRgba8 = unsafe extern "C" fn(
@@ -111,6 +181,8 @@ struct NativeLibrary {
     options_init: OptionsInit,
     get_output_size: GetOutputSize,
     convert_rgba8: ConvertRgba8,
+    pixelart_init: PixelArtInit,
+    convert_pixelart: ConvertPixelArt,
 }
 
 impl NativeLibrary {
@@ -118,7 +190,7 @@ impl NativeLibrary {
         let path = native_library_path()?;
         let library =
             unsafe { libloading::Library::new(path) }.map_err(MadeItPxError::NativeLoad)?;
-        let (options_init, get_output_size, convert_rgba8) = unsafe {
+        let (options_init, get_output_size, convert_rgba8, pixelart_init, convert_pixelart) = unsafe {
             let options_init = *library
                 .get::<OptionsInit>(b"madeitpx_options_init\0")
                 .map_err(MadeItPxError::NativeLoad)?;
@@ -128,7 +200,19 @@ impl NativeLibrary {
             let convert_rgba8 = *library
                 .get::<ConvertRgba8>(b"madeitpx_convert_rgba8\0")
                 .map_err(MadeItPxError::NativeLoad)?;
-            (options_init, get_output_size, convert_rgba8)
+            let pixelart_init = *library
+                .get::<PixelArtInit>(b"madeitpx_pixelart_options_init\0")
+                .map_err(MadeItPxError::NativeLoad)?;
+            let convert_pixelart = *library
+                .get::<ConvertPixelArt>(b"madeitpx_convert_pixelart_rgba8\0")
+                .map_err(MadeItPxError::NativeLoad)?;
+            (
+                options_init,
+                get_output_size,
+                convert_rgba8,
+                pixelart_init,
+                convert_pixelart,
+            )
         };
 
         Ok(Self {
@@ -136,6 +220,8 @@ impl NativeLibrary {
             options_init,
             get_output_size,
             convert_rgba8,
+            pixelart_init,
+            convert_pixelart,
         })
     }
 }
@@ -208,6 +294,71 @@ fn validate_options(options: Options) -> Result<(), MadeItPxError> {
         ));
     }
     Ok(())
+}
+
+impl PixelArtSettings {
+    fn apply(&self, native: &mut NativePixelArtOptions) {
+        if let Some(value) = self.version {
+            native.version = value;
+        }
+        if let Some(value) = self.mode {
+            native.mode = value as u32;
+        }
+        if let Some(value) = self.grid_fit {
+            native.grid_fit = u32::from(value);
+        }
+        if let Some(value) = self.grid_search_permille {
+            native.grid_search_permille = value;
+        }
+        if let Some(value) = self.sample_inset_percent {
+            native.sample_inset_percent = value;
+        }
+        if let Some(value) = self.color_tolerance {
+            native.color_tolerance = value;
+        }
+        if let Some(value) = self.palette_max {
+            native.palette_max = value;
+        }
+        if let Some(value) = self.refine_iterations {
+            native.refine_iterations = value;
+        }
+        if let Some(value) = self.ink_percent {
+            native.ink_percent = value;
+        }
+        if let Some(value) = self.min_region {
+            native.min_region = value;
+        }
+        if let Some(value) = self.alpha_threshold {
+            native.alpha_threshold = value;
+        }
+        if let Some(value) = self.keep_transparency {
+            native.keep_transparency = u32::from(value);
+        }
+    }
+
+    fn from_native(native: &NativePixelArtOptions) -> Self {
+        Self {
+            version: Some(native.version),
+            mode: PixelArtMode::from_native(native.mode),
+            grid_fit: Some(native.grid_fit == 1),
+            grid_search_permille: Some(native.grid_search_permille),
+            sample_inset_percent: Some(native.sample_inset_percent),
+            color_tolerance: Some(native.color_tolerance),
+            palette_max: Some(native.palette_max),
+            refine_iterations: Some(native.refine_iterations),
+            ink_percent: Some(native.ink_percent),
+            min_region: Some(native.min_region),
+            alpha_threshold: Some(native.alpha_threshold),
+            keep_transparency: Some(native.keep_transparency == 1),
+        }
+    }
+}
+
+pub fn pixelart_defaults() -> Result<PixelArtSettings, MadeItPxError> {
+    let library = native_library()?;
+    let mut native = NativePixelArtOptions::default();
+    check_status(unsafe { (library.pixelart_init)(&mut native) })?;
+    Ok(PixelArtSettings::from_native(&native))
 }
 
 fn check_status(status: i32) -> Result<(), MadeItPxError> {
@@ -285,6 +436,27 @@ pub fn convert_rgba8(
     }
 
     let mut output = vec![0u8; output_size];
+    if options.preset == Preset::Pixelart {
+        let mut native_pixelart = NativePixelArtOptions::default();
+        check_status(unsafe { (library.pixelart_init)(&mut native_pixelart) })?;
+        options.pixelart.apply(&mut native_pixelart);
+        check_status(unsafe {
+            (library.convert_pixelart)(
+                input.as_ptr(),
+                input.len(),
+                input_width_u32,
+                input_height_u32,
+                stride,
+                target_width_u32,
+                target_height_u32,
+                &native_options,
+                &native_pixelart,
+                output.as_mut_ptr(),
+                output.len(),
+            )
+        })?;
+        return Ok(output);
+    }
     check_status(unsafe {
         (library.convert_rgba8)(
             input.as_ptr(),
@@ -405,5 +577,39 @@ mod tests {
         )
         .expect("pixelart conversion should succeed");
         assert_eq!(output, [90, 120, 150, 255]);
+    }
+
+    #[test]
+    fn exposes_pixelart_defaults_and_version_one() {
+        if env::var_os("MADEITPX_LIBRARY_PATH").is_none() {
+            return;
+        }
+        let defaults = pixelart_defaults().expect("defaults should load");
+        assert_eq!(defaults.version, Some(2));
+        assert_eq!(defaults.mode, Some(PixelArtMode::Auto));
+        assert_eq!(defaults.keep_transparency, Some(true));
+        let options = Options {
+            preset: Preset::Pixelart,
+            pixelart: PixelArtSettings {
+                version: Some(1),
+                ..PixelArtSettings::default()
+            },
+            ..Options::default()
+        };
+        let output = convert_rgba8(&[90, 120, 150, 255], 1, 1, None, 1, 1, options)
+            .expect("version 1 should succeed");
+        assert_eq!(output, [90, 120, 150, 255]);
+        let invalid = Options {
+            preset: Preset::Pixelart,
+            pixelart: PixelArtSettings {
+                palette_max: Some(1),
+                ..PixelArtSettings::default()
+            },
+            ..Options::default()
+        };
+        assert!(matches!(
+            convert_rgba8(&[90, 120, 150, 255], 1, 1, None, 1, 1, invalid),
+            Err(MadeItPxError::NativeStatus(1))
+        ));
     }
 }
