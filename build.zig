@@ -58,6 +58,20 @@ pub fn build(b: *std.Build) void {
     });
     const run_c_test = b.addRunArtifact(c_test);
 
+    const wasm = b.addExecutable(.{
+        .name = "madeitpx",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/web.zig"),
+            .target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding }),
+            .optimize = .ReleaseSmall,
+        }),
+    });
+    wasm.entry = .disabled;
+    wasm.rdynamic = true;
+    const install_wasm = b.addInstallArtifact(wasm, .{ .dest_dir = .{ .override = .{ .custom = "wasm" } } });
+    const wasm_step = b.step("wasm", "Build the WebAssembly module");
+    wasm_step.dependOn(&install_wasm.step);
+
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_unit_tests.step);
     test_step.dependOn(&run_c_test.step);
