@@ -2,6 +2,14 @@
 
 Notable changes to `madeitpx` are documented here.
 
+## [0.2.1] - 2026-11-02
+
+### Added
+
+- Added version 2 of the `pixelart` preset, which recovers the real pixel grid of scaled-up
+  pixel art, and `madeitpx_convert_pixelart_rgba8` with detailed settings and per-field reset.
+  Version 1 stays available (`version = 1`) and remains what `preset = 3` runs in `madeitpx_convert_rgba8`.
+
 ## [0.2.0] - 2026-10-31
 
 ### Added
