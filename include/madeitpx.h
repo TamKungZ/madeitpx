@@ -38,7 +38,44 @@ typedef struct madeitpx_options {
     uint32_t reserved;
 } madeitpx_options;
 
+typedef enum madeitpx_pixelart_field {
+    MADEITPX_PIXELART_FIELD_VERSION = 0,
+    MADEITPX_PIXELART_FIELD_GRID_FIT = 1,
+    MADEITPX_PIXELART_FIELD_GRID_SEARCH_PERMILLE = 2,
+    MADEITPX_PIXELART_FIELD_SAMPLE_INSET_PERCENT = 3,
+    MADEITPX_PIXELART_FIELD_COLOR_TOLERANCE = 4,
+    MADEITPX_PIXELART_FIELD_PALETTE_MAX = 5,
+    MADEITPX_PIXELART_FIELD_REFINE_ITERATIONS = 6
+} madeitpx_pixelart_field;
+
+typedef struct madeitpx_pixelart_options {
+    uint32_t struct_size;
+    uint32_t version;
+    uint32_t grid_fit;
+    uint32_t grid_search_permille;
+    uint32_t sample_inset_percent;
+    uint32_t color_tolerance;
+    uint32_t palette_max;
+    uint32_t refine_iterations;
+    uint32_t reserved;
+} madeitpx_pixelart_options;
+
 uint32_t madeitpx_version(void);
+madeitpx_status madeitpx_pixelart_options_init(madeitpx_pixelart_options *options);
+madeitpx_status madeitpx_pixelart_options_reset_field(madeitpx_pixelart_options *options, uint32_t field);
+madeitpx_status madeitpx_convert_pixelart_rgba8(
+    const uint8_t *input,
+    size_t input_size,
+    uint32_t input_width,
+    uint32_t input_height,
+    size_t input_stride,
+    uint32_t target_width,
+    uint32_t target_height,
+    const madeitpx_options *options,
+    const madeitpx_pixelart_options *pixelart_options,
+    uint8_t *output,
+    size_t output_capacity
+);
 madeitpx_status madeitpx_options_init(madeitpx_options *options);
 madeitpx_status madeitpx_get_output_size(
     uint32_t target_width,

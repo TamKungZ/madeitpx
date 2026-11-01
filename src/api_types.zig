@@ -29,3 +29,37 @@ pub const Options = extern struct {
 };
 
 pub const abi_version: u32 = 0x00010000;
+
+pub const PixelArtOptions = extern struct {
+    struct_size: u32,
+    version: u32,
+    grid_fit: u32,
+    grid_search_permille: u32,
+    sample_inset_percent: u32,
+    color_tolerance: u32,
+    palette_max: u32,
+    refine_iterations: u32,
+    reserved: u32,
+};
+
+pub const PixelArtField = enum(u32) {
+    version = 0,
+    grid_fit = 1,
+    grid_search_permille = 2,
+    sample_inset_percent = 3,
+    color_tolerance = 4,
+    palette_max = 5,
+    refine_iterations = 6,
+};
+
+pub const pixelart_defaults = PixelArtOptions{
+    .struct_size = @sizeOf(PixelArtOptions),
+    .version = 2,
+    .grid_fit = 1,
+    .grid_search_permille = 30,
+    .sample_inset_percent = 25,
+    .color_tolerance = 14,
+    .palette_max = 0,
+    .refine_iterations = 5,
+    .reserved = 0,
+};
