@@ -13,7 +13,7 @@ RGBA8 pixel buffers to an output grid with a limited color palette.
 
 ```toml
 [dependencies]
-madeitpx = "0.2.0"
+madeitpx = "0.2.1"
 ```
 
 ```rust
