@@ -171,6 +171,7 @@ test "faint alpha fringe neither darkens the edge nor becomes a cell" {
     var output: [6 * 6 * 4]u8 = undefined;
     var options = api.pixelart_defaults;
     options.mode = @backingInt(api.PixelArtMode.illustration);
+    options.keep_transparency = 0;
     try std.testing.expectEqual(api.Status.ok, convert(&input, 24, 24, 96, 6, 6, 0x102030, &options, &output));
     for (0..6) |y| {
         for (0..6) |x| {
@@ -179,4 +180,26 @@ test "faint alpha fringe neither darkens the edge nor becomes a cell" {
             try std.testing.expectEqualSlices(u8, &expected, output[(y * 6 + x) * 4 .. (y * 6 + x) * 4 + 3]);
         }
     }
+}
+
+test "keep_transparency writes empty cells with zero alpha" {
+    var input: [8 * 8 * 4]u8 = undefined;
+    @memset(&input, 0);
+    for (2..6) |y| {
+        for (2..6) |x| {
+            const base = (y * 8 + x) * 4;
+            input[base] = 200;
+            input[base + 1] = 100;
+            input[base + 2] = 50;
+            input[base + 3] = 255;
+        }
+    }
+    var output: [4 * 4 * 4]u8 = undefined;
+    var options = api.pixelart_defaults;
+    options.mode = @backingInt(api.PixelArtMode.illustration);
+    options.min_region = 1;
+    try std.testing.expectEqual(api.Status.ok, convert(&input, 8, 8, 32, 4, 4, 0, &options, &output));
+    try std.testing.expectEqual(@as(u8, 0), output[3]);
+    try std.testing.expectEqual(@as(u8, 255), output[(1 * 4 + 1) * 4 + 3]);
+    try std.testing.expectEqual(@as(u8, 200), output[(1 * 4 + 1) * 4]);
 }
