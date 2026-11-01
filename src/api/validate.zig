@@ -45,7 +45,8 @@ pub fn validPixelArtOptions(options: *const api.PixelArtOptions) bool {
         options.mode <= @backingInt(api.PixelArtMode.illustration) and
         options.ink_percent <= 100 and
         options.min_region >= 1 and options.min_region <= 64 and
-        options.alpha_threshold <= 255;
+        options.alpha_threshold <= 255 and
+        options.keep_transparency <= 1;
 }
 
 pub fn checkBuffers(

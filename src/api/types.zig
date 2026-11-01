@@ -49,6 +49,7 @@ pub const PixelArtOptions = extern struct {
     ink_percent: u32,
     min_region: u32,
     alpha_threshold: u32,
+    keep_transparency: u32,
     reserved: u32,
 };
 
@@ -64,6 +65,7 @@ pub const PixelArtField = enum(u32) {
     ink_percent = 8,
     min_region = 9,
     alpha_threshold = 10,
+    keep_transparency = 11,
 };
 
 pub const pixelart_defaults = PixelArtOptions{
@@ -79,5 +81,6 @@ pub const pixelart_defaults = PixelArtOptions{
     .ink_percent = 20,
     .min_region = 4,
     .alpha_threshold = 128,
+    .keep_transparency = 1,
     .reserved = 0,
 };

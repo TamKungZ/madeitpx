@@ -190,9 +190,10 @@ pub fn convert(
     }
 
     for (0..count) |index| {
-        const output = if (buffers.cells[index].empty) source.matte else colors[buffers.labels[index]];
+        const empty = buffers.cells[index].empty;
+        const output = if (empty) source.matte else colors[buffers.labels[index]];
         @memcpy(destination[index * 4 .. index * 4 + 3], &output);
-        destination[index * 4 + 3] = 255;
+        destination[index * 4 + 3] = if (empty and options.keep_transparency == 1) 0 else 255;
     }
     return .ok;
 }

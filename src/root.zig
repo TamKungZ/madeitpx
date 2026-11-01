@@ -55,7 +55,7 @@ export fn madeitpx_get_output_size(
     return .ok;
 }
 
-export fn madeitpx_convert_rgba8(
+pub export fn madeitpx_convert_rgba8(
     input: ?[*]const u8,
     input_size: usize,
     input_width: u32,
