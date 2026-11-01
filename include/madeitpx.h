@@ -49,7 +49,8 @@ typedef enum madeitpx_pixelart_field {
     MADEITPX_PIXELART_FIELD_MODE = 7,
     MADEITPX_PIXELART_FIELD_INK_PERCENT = 8,
     MADEITPX_PIXELART_FIELD_MIN_REGION = 9,
-    MADEITPX_PIXELART_FIELD_ALPHA_THRESHOLD = 10
+    MADEITPX_PIXELART_FIELD_ALPHA_THRESHOLD = 10,
+    MADEITPX_PIXELART_FIELD_KEEP_TRANSPARENCY = 11
 } madeitpx_pixelart_field;
 
 typedef enum madeitpx_pixelart_mode {
@@ -71,6 +72,7 @@ typedef struct madeitpx_pixelart_options {
     uint32_t ink_percent;
     uint32_t min_region;
     uint32_t alpha_threshold;
+    uint32_t keep_transparency;
     uint32_t reserved;
 } madeitpx_pixelart_options;
 
