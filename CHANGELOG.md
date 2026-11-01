@@ -7,6 +7,11 @@ Notable changes to `madeitpx` are documented here.
 ### Added
 
 - Reorganised `src/` into `api/`, `core/`, `common/` and `pixelart/` (`v1.zig`, `v2/`).
+- The Node.js, Python, Rust, .NET and Java bindings expose the pixel-art settings
+  (`pixelart` option, `pixelartDefaults()`), and `preset: pixelart` now runs version 2 there;
+  `version: 1` selects the original pipeline. Output cells that were transparent in the source can
+  have alpha 0 (`keep_transparency`).
+- The npm package has a WebAssembly entry for browsers and bundlers (`zig build wasm`).
 - Added version 2 of the `pixelart` preset, which recovers the real pixel grid of scaled-up
   pixel art and reduces smooth artwork with preserved outlines and merged shading regions
   (`mode` picks automatically), and `madeitpx_convert_pixelart_rgba8` with detailed settings and
