@@ -40,3 +40,18 @@ unless they are staged under `src/main/resources/native` before packaging.
 
 The release workflow publishes the artifact to Maven Central and attaches the
 JAR to GitHub Releases.
+
+## Pixelart preset
+
+`Preset.PIXELART` uses version 2 of the pixel-art pipeline. Settings you do not set keep the library
+default, and `MadeItPx.pixelartDefaults()` returns all of them.
+
+```java
+MadeItPx.Options options = new MadeItPx.Options(
+        MadeItPx.Preset.PIXELART, 0, 0, MadeItPx.Sampling.NEAREST, true,
+        new MadeItPx.PixelArtSettings().mode(MadeItPx.PixelArtMode.ILLUSTRATION).paletteMax(32));
+```
+
+`version(1)` runs the original pipeline. With `keepTransparency` (default) cells that were
+transparent in the source are returned with alpha 0. See
+[the pixelart documentation](https://github.com/TamKungZ/madeitpx/blob/main/docs/PIXELART.md).

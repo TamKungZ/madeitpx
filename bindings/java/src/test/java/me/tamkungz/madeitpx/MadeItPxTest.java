@@ -49,6 +49,24 @@ class MadeItPxTest {
     }
 
     @Test
+    @EnabledIfEnvironmentVariable(named = "MADEITPX_LIBRARY_PATH", matches = ".+")
+    void exposesPixelartDefaultsAndVersionOne() {
+        MadeItPx.PixelArtSettings defaults = MadeItPx.pixelartDefaults();
+        assertEquals(2, defaults.getVersion());
+        assertEquals(MadeItPx.PixelArtMode.AUTO, defaults.getMode());
+        assertEquals(Boolean.TRUE, defaults.getKeepTransparency());
+        byte[] pixel = new byte[] {90, 120, (byte) 150, (byte) 255};
+        MadeItPx.Options versionOne = new MadeItPx.Options(
+                MadeItPx.Preset.PIXELART, 0, 0, MadeItPx.Sampling.NEAREST, true,
+                new MadeItPx.PixelArtSettings().version(1));
+        assertArrayEquals(pixel, MadeItPx.convert(pixel, 1, 1, 1, 1, versionOne));
+        MadeItPx.Options invalid = new MadeItPx.Options(
+                MadeItPx.Preset.PIXELART, 0, 0, MadeItPx.Sampling.NEAREST, true,
+                new MadeItPx.PixelArtSettings().paletteMax(1));
+        assertThrows(MadeItPx.ConversionException.class, () -> MadeItPx.convert(pixel, 1, 1, 1, 1, invalid));
+    }
+
+    @Test
     void loadsBundledLibraryWhenAvailable() {
         String resource = currentNativeResource();
         assumeTrue(resource != null && MadeItPx.class.getResource(resource) != null);

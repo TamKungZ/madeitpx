@@ -30,12 +30,184 @@ public final class MadeItPx {
         NEAREST
     }
 
+    public enum PixelArtMode {
+        AUTO,
+        GRID,
+        ILLUSTRATION
+    }
+
+    public static final class PixelArtSettings {
+        private Integer version;
+        private PixelArtMode mode;
+        private Boolean gridFit;
+        private Integer gridSearchPermille;
+        private Integer sampleInsetPercent;
+        private Integer colorTolerance;
+        private Integer paletteMax;
+        private Integer refineIterations;
+        private Integer inkPercent;
+        private Integer minRegion;
+        private Integer alphaThreshold;
+        private Boolean keepTransparency;
+
+        public Integer getVersion() {
+            return version;
+        }
+
+        public PixelArtSettings version(int value) {
+            this.version = nonNegative(value, "version");
+            return this;
+        }
+
+        public PixelArtMode getMode() {
+            return mode;
+        }
+
+        public PixelArtSettings mode(PixelArtMode value) {
+            if (value == null) {
+                throw new NullPointerException("mode");
+            }
+            this.mode = value;
+            return this;
+        }
+
+        public Boolean getGridFit() {
+            return gridFit;
+        }
+
+        public PixelArtSettings gridFit(boolean value) {
+            this.gridFit = value;
+            return this;
+        }
+
+        public Integer getGridSearchPermille() {
+            return gridSearchPermille;
+        }
+
+        public PixelArtSettings gridSearchPermille(int value) {
+            this.gridSearchPermille = nonNegative(value, "gridSearchPermille");
+            return this;
+        }
+
+        public Integer getSampleInsetPercent() {
+            return sampleInsetPercent;
+        }
+
+        public PixelArtSettings sampleInsetPercent(int value) {
+            this.sampleInsetPercent = nonNegative(value, "sampleInsetPercent");
+            return this;
+        }
+
+        public Integer getColorTolerance() {
+            return colorTolerance;
+        }
+
+        public PixelArtSettings colorTolerance(int value) {
+            this.colorTolerance = nonNegative(value, "colorTolerance");
+            return this;
+        }
+
+        public Integer getPaletteMax() {
+            return paletteMax;
+        }
+
+        public PixelArtSettings paletteMax(int value) {
+            this.paletteMax = nonNegative(value, "paletteMax");
+            return this;
+        }
+
+        public Integer getRefineIterations() {
+            return refineIterations;
+        }
+
+        public PixelArtSettings refineIterations(int value) {
+            this.refineIterations = nonNegative(value, "refineIterations");
+            return this;
+        }
+
+        public Integer getInkPercent() {
+            return inkPercent;
+        }
+
+        public PixelArtSettings inkPercent(int value) {
+            this.inkPercent = nonNegative(value, "inkPercent");
+            return this;
+        }
+
+        public Integer getMinRegion() {
+            return minRegion;
+        }
+
+        public PixelArtSettings minRegion(int value) {
+            this.minRegion = nonNegative(value, "minRegion");
+            return this;
+        }
+
+        public Integer getAlphaThreshold() {
+            return alphaThreshold;
+        }
+
+        public PixelArtSettings alphaThreshold(int value) {
+            this.alphaThreshold = nonNegative(value, "alphaThreshold");
+            return this;
+        }
+
+        public Boolean getKeepTransparency() {
+            return keepTransparency;
+        }
+
+        public PixelArtSettings keepTransparency(boolean value) {
+            this.keepTransparency = value;
+            return this;
+        }
+
+        private static int nonNegative(int value, String name) {
+            if (value < 0) {
+                throw new IllegalArgumentException(name + " must not be negative");
+            }
+            return value;
+        }
+
+        private void applyTo(NativePixelArtOptions native_) {
+            if (version != null) native_.version = version;
+            if (mode != null) native_.mode = mode.ordinal();
+            if (gridFit != null) native_.gridFit = gridFit ? 1 : 0;
+            if (gridSearchPermille != null) native_.gridSearchPermille = gridSearchPermille;
+            if (sampleInsetPercent != null) native_.sampleInsetPercent = sampleInsetPercent;
+            if (colorTolerance != null) native_.colorTolerance = colorTolerance;
+            if (paletteMax != null) native_.paletteMax = paletteMax;
+            if (refineIterations != null) native_.refineIterations = refineIterations;
+            if (inkPercent != null) native_.inkPercent = inkPercent;
+            if (minRegion != null) native_.minRegion = minRegion;
+            if (alphaThreshold != null) native_.alphaThreshold = alphaThreshold;
+            if (keepTransparency != null) native_.keepTransparency = keepTransparency ? 1 : 0;
+        }
+
+        private static PixelArtSettings fromNative(NativePixelArtOptions native_) {
+            PixelArtSettings result = new PixelArtSettings();
+            result.version = native_.version;
+            result.mode = PixelArtMode.values()[native_.mode];
+            result.gridFit = native_.gridFit == 1;
+            result.gridSearchPermille = native_.gridSearchPermille;
+            result.sampleInsetPercent = native_.sampleInsetPercent;
+            result.colorTolerance = native_.colorTolerance;
+            result.paletteMax = native_.paletteMax;
+            result.refineIterations = native_.refineIterations;
+            result.inkPercent = native_.inkPercent;
+            result.minRegion = native_.minRegion;
+            result.alphaThreshold = native_.alphaThreshold;
+            result.keepTransparency = native_.keepTransparency == 1;
+            return result;
+        }
+    }
+
     public static final class Options {
         private final Preset preset;
         private final int paletteColors;
         private final int backgroundRgb;
         private final Sampling sampling;
         private final boolean clusterCleanup;
+        private final PixelArtSettings pixelArt;
 
         public Options() {
             this(Preset.BALANCED, 0, 0, Sampling.NEAREST, true);
@@ -47,6 +219,16 @@ public final class MadeItPx {
                 int backgroundRgb,
                 Sampling sampling,
                 boolean clusterCleanup) {
+            this(preset, paletteColors, backgroundRgb, sampling, clusterCleanup, new PixelArtSettings());
+        }
+
+        public Options(
+                Preset preset,
+                int paletteColors,
+                int backgroundRgb,
+                Sampling sampling,
+                boolean clusterCleanup,
+                PixelArtSettings pixelArt) {
             if (preset == null) {
                 throw new NullPointerException("preset");
             }
@@ -64,6 +246,11 @@ public final class MadeItPx {
             this.backgroundRgb = backgroundRgb;
             this.sampling = sampling;
             this.clusterCleanup = clusterCleanup;
+            this.pixelArt = pixelArt == null ? new PixelArtSettings() : pixelArt;
+        }
+
+        public PixelArtSettings getPixelArt() {
+            return pixelArt;
         }
 
         public Preset getPreset() {
@@ -98,6 +285,13 @@ public final class MadeItPx {
         public int getStatus() {
             return status;
         }
+    }
+
+    public static PixelArtSettings pixelartDefaults() {
+        NativePixelArtOptions native_ = new NativePixelArtOptions();
+        checkStatus(NativeAccess.INSTANCE.madeitpx_pixelart_options_init(native_));
+        native_.read();
+        return PixelArtSettings.fromNative(native_);
     }
 
     public static byte[] convert(
@@ -169,6 +363,26 @@ public final class MadeItPx {
         }
 
         byte[] output = new byte[(int) requiredOutputLength];
+        if (settings.preset == Preset.PIXELART) {
+            NativePixelArtOptions nativePixelArt = new NativePixelArtOptions();
+            checkStatus(library.madeitpx_pixelart_options_init(nativePixelArt));
+            nativePixelArt.read();
+            settings.pixelArt.applyTo(nativePixelArt);
+            nativePixelArt.write();
+            checkStatus(library.madeitpx_convert_pixelart_rgba8(
+                    input,
+                    input.length,
+                    inputWidth,
+                    inputHeight,
+                    inputStride,
+                    targetWidth,
+                    targetHeight,
+                    nativeOptions,
+                    nativePixelArt,
+                    output,
+                    output.length));
+            return output;
+        }
         checkStatus(library.madeitpx_convert_rgba8(
                 input,
                 input.length,
@@ -263,6 +477,21 @@ public final class MadeItPx {
     private interface NativeApi extends Library {
         int madeitpx_options_init(NativeOptions options);
 
+        int madeitpx_pixelart_options_init(NativePixelArtOptions options);
+
+        int madeitpx_convert_pixelart_rgba8(
+                byte[] input,
+                long inputSize,
+                int inputWidth,
+                int inputHeight,
+                long inputStride,
+                int targetWidth,
+                int targetHeight,
+                NativeOptions options,
+                NativePixelArtOptions pixelArt,
+                byte[] output,
+                long outputCapacity);
+
         int madeitpx_get_output_size(int targetWidth, int targetHeight, LongByReference outputSize);
 
         int madeitpx_convert_rgba8(
@@ -294,6 +523,39 @@ public final class MadeItPx {
         public int backgroundRgb;
         public int sampleMode;
         public int clusterCleanup;
+        public int reserved;
+    }
+
+    @Structure.FieldOrder({
+            "structSize",
+            "version",
+            "gridFit",
+            "gridSearchPermille",
+            "sampleInsetPercent",
+            "colorTolerance",
+            "paletteMax",
+            "refineIterations",
+            "mode",
+            "inkPercent",
+            "minRegion",
+            "alphaThreshold",
+            "keepTransparency",
+            "reserved"
+    })
+    public static final class NativePixelArtOptions extends Structure implements Structure.ByReference {
+        public int structSize;
+        public int version;
+        public int gridFit;
+        public int gridSearchPermille;
+        public int sampleInsetPercent;
+        public int colorTolerance;
+        public int paletteMax;
+        public int refineIterations;
+        public int mode;
+        public int inkPercent;
+        public int minRegion;
+        public int alphaThreshold;
+        public int keepTransparency;
         public int reserved;
     }
 
