@@ -1,5 +1,5 @@
 const std = @import("std");
-const api = @import("api_types.zig");
+const api = @import("../api/types.zig");
 
 pub const max_colors = 64;
 

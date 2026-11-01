@@ -1,86 +1,29 @@
 const std = @import("std");
 
-const api = @import("api_types.zig");
-const sampling = @import("sampling.zig");
-const palette_mod = @import("palette.zig");
-const pixelart = @import("pixelart.zig");
-const pixelart_v2 = @import("pixelart_v2.zig");
+const api = @import("api/types.zig");
+const validate = @import("api/validate.zig");
+const sampling = @import("core/sampling.zig");
+const palette_mod = @import("core/palette.zig");
+const pixelart_v1 = @import("pixelart/v1.zig");
+const pixelart_v2 = @import("pixelart/v2/convert.zig");
 
 pub const PixelArtOptions = api.PixelArtOptions;
 pub const PixelArtField = api.PixelArtField;
+pub const PixelArtMode = api.PixelArtMode;
 pub const Status = api.Status;
 pub const Preset = api.Preset;
 pub const SampleMode = api.SampleMode;
 pub const Options = api.Options;
 pub const abi_version = api.abi_version;
 
-const max_palette_colors = palette_mod.max_colors;
 const compositeAndQuantize = palette_mod.compositeAndQuantize;
+const validOptions = validate.validOptions;
+const validPixelArtOptions = validate.validPixelArtOptions;
+const checkBuffers = validate.checkBuffers;
+const rgbaSize = validate.rgbaSize;
 
-fn checkedMul(a: usize, b: usize) ?usize {
-    const result = @mulWithOverflow(a, b);
-    if (result[1] != 0) return null;
-    return result[0];
-}
-
-fn checkedAdd(a: usize, b: usize) ?usize {
-    const result = @addWithOverflow(a, b);
-    if (result[1] != 0) return null;
-    return result[0];
-}
-
-fn validOptions(options: *const Options) bool {
-    return options.struct_size >= @sizeOf(Options) and
-        options.reserved == 0 and
-        (options.palette_colors == 0 or (options.palette_colors >= 2 and options.palette_colors <= max_palette_colors)) and
-        options.preset <= @backingInt(Preset.pixelart) and
-        options.sample_mode <= @backingInt(SampleMode.nearest) and
-        options.cluster_cleanup <= 1;
-}
-
-fn rgbaSize(width: u32, height: u32) ?usize {
-    const pixels = checkedMul(@as(usize, width), @as(usize, height)) orelse return null;
-    return checkedMul(pixels, 4);
-}
-
-const Checked = struct {
-    status: Status,
-    output_size: usize = 0,
-};
-
-fn checkBuffers(
-    input_size: usize,
-    input_width: u32,
-    input_height: u32,
-    input_stride: usize,
-    target_width: u32,
-    target_height: u32,
-    output_capacity: usize,
-) Checked {
-    if (input_width == 0 or input_height == 0 or target_width == 0 or target_height == 0)
-        return .{ .status = .invalid_argument };
-
-    const source_row_size = checkedMul(@as(usize, input_width), 4) orelse return .{ .status = .size_overflow };
-    if (input_stride < source_row_size) return .{ .status = .invalid_argument };
-    const source_offset = checkedMul(@as(usize, input_height - 1), input_stride) orelse return .{ .status = .size_overflow };
-    const required_input_size = checkedAdd(source_offset, source_row_size) orelse return .{ .status = .size_overflow };
-    if (input_size < required_input_size) return .{ .status = .buffer_too_small };
-
-    const required_output_size = rgbaSize(target_width, target_height) orelse return .{ .status = .size_overflow };
-    if (output_capacity < required_output_size) return .{ .status = .buffer_too_small };
-    return .{ .status = .ok, .output_size = required_output_size };
-}
-
-fn validPixelArtOptions(options: *const PixelArtOptions) bool {
-    return options.struct_size >= @sizeOf(PixelArtOptions) and
-        options.reserved == 0 and
-        (options.version == 1 or options.version == 2) and
-        options.grid_fit <= 1 and
-        options.grid_search_permille <= 200 and
-        options.sample_inset_percent <= 45 and
-        options.color_tolerance <= 442 and
-        (options.palette_max == 0 or (options.palette_max >= 2 and options.palette_max <= 256)) and
-        options.refine_iterations <= 32;
+test {
+    _ = @import("pixelart/v2/tests.zig");
 }
 
 export fn madeitpx_version() u32 {
@@ -132,7 +75,7 @@ export fn madeitpx_convert_rgba8(
     if (checked.status != .ok) return checked.status;
     const required_output_size = checked.output_size;
     if (config.preset == @backingInt(Preset.pixelart)) {
-        return pixelart.convert(source, input_width, input_height, input_stride, target_width, target_height, config, destination);
+        return pixelart_v1.convert(source, input_width, input_height, input_stride, target_width, target_height, config, destination);
     }
     const output_pixel_count = required_output_size / 4;
     const indices = std.heap.page_allocator.alloc(usize, output_pixel_count) catch return .out_of_memory;
@@ -157,17 +100,14 @@ export fn madeitpx_pixelart_options_reset_field(options: ?*PixelArtOptions, fiel
     const value = options orelse return .invalid_argument;
     if (value.struct_size < @sizeOf(PixelArtOptions)) return .invalid_argument;
     const defaults = api.pixelart_defaults;
-    switch (field) {
-        @backingInt(PixelArtField.version) => value.version = defaults.version,
-        @backingInt(PixelArtField.grid_fit) => value.grid_fit = defaults.grid_fit,
-        @backingInt(PixelArtField.grid_search_permille) => value.grid_search_permille = defaults.grid_search_permille,
-        @backingInt(PixelArtField.sample_inset_percent) => value.sample_inset_percent = defaults.sample_inset_percent,
-        @backingInt(PixelArtField.color_tolerance) => value.color_tolerance = defaults.color_tolerance,
-        @backingInt(PixelArtField.palette_max) => value.palette_max = defaults.palette_max,
-        @backingInt(PixelArtField.refine_iterations) => value.refine_iterations = defaults.refine_iterations,
-        else => return .invalid_argument,
+    const info = @typeInfo(PixelArtField).@"enum";
+    inline for (info.field_names, info.field_values) |name, tag| {
+        if (field == tag) {
+            @field(value, name) = @field(defaults, name);
+            return .ok;
+        }
     }
-    return .ok;
+    return .invalid_argument;
 }
 
 export fn madeitpx_convert_pixelart_rgba8(
@@ -194,7 +134,7 @@ export fn madeitpx_convert_pixelart_rgba8(
     if (detail.version == 1) {
         var legacy = config.*;
         legacy.preset = @backingInt(Preset.pixelart);
-        return pixelart.convert(source, input_width, input_height, input_stride, target_width, target_height, &legacy, destination);
+        return pixelart_v1.convert(source, input_width, input_height, input_stride, target_width, target_height, &legacy, destination);
     }
     return pixelart_v2.convert(source, input_width, input_height, input_stride, target_width, target_height, config.background_rgb, detail, destination);
 }

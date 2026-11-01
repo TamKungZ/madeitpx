@@ -45,8 +45,18 @@ typedef enum madeitpx_pixelart_field {
     MADEITPX_PIXELART_FIELD_SAMPLE_INSET_PERCENT = 3,
     MADEITPX_PIXELART_FIELD_COLOR_TOLERANCE = 4,
     MADEITPX_PIXELART_FIELD_PALETTE_MAX = 5,
-    MADEITPX_PIXELART_FIELD_REFINE_ITERATIONS = 6
+    MADEITPX_PIXELART_FIELD_REFINE_ITERATIONS = 6,
+    MADEITPX_PIXELART_FIELD_MODE = 7,
+    MADEITPX_PIXELART_FIELD_INK_PERCENT = 8,
+    MADEITPX_PIXELART_FIELD_MIN_REGION = 9,
+    MADEITPX_PIXELART_FIELD_ALPHA_THRESHOLD = 10
 } madeitpx_pixelart_field;
+
+typedef enum madeitpx_pixelart_mode {
+    MADEITPX_PIXELART_MODE_AUTO = 0,
+    MADEITPX_PIXELART_MODE_GRID = 1,
+    MADEITPX_PIXELART_MODE_ILLUSTRATION = 2
+} madeitpx_pixelart_mode;
 
 typedef struct madeitpx_pixelart_options {
     uint32_t struct_size;
@@ -57,6 +67,10 @@ typedef struct madeitpx_pixelart_options {
     uint32_t color_tolerance;
     uint32_t palette_max;
     uint32_t refine_iterations;
+    uint32_t mode;
+    uint32_t ink_percent;
+    uint32_t min_region;
+    uint32_t alpha_threshold;
     uint32_t reserved;
 } madeitpx_pixelart_options;
 

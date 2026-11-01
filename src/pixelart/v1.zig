@@ -1,41 +1,23 @@
-//! `pixelart` preset: a structure-first conversion path for pixel art.
-//!
-//! Pipeline (all integer arithmetic, deterministic):
-//!   1. reduceCells   - one output cell per source block. A cell is split into at most two
-//!                      colour classes. Flat cells use the mean, edge cells use the majority
-//!                      class (crisp boundaries instead of blended mid-tones). The darker class
-//!                      is remembered as "ink" when it is dark and contrasty enough.
-//!   2. buildInk      - outline mask: dark-biased, thinned to one cell across without breaking
-//!                      8-connectivity, isolated specks dropped, short gaps bridged.
-//!   3. palette       - a few slots are reserved for ink colours so outlines stay dark; the rest
-//!                      comes from the existing median-cut over non-ink cells.
-//!   4. cleanup       - non-ink cells must belong to a 2x2 block of one colour. Cells that do not
-//!                      (isolated pixels, 1px bands, 1px teeth) are pulled into the nearest-coloured
-//!                      neighbouring block. Ink cells are never touched.
-
 const std = @import("std");
 
-const api = @import("api_types.zig");
-const palette_mod = @import("palette.zig");
+const api = @import("../api/types.zig");
+const palette_mod = @import("../core/palette.zig");
 
 const Rgb = [3]u8;
 
-/// Palette size used when `palette_colors == 0`.
 pub const default_palette_colors: usize = 16;
 
-// Edge / ink detection (distance uses the 3,4,2 weights of palette.colorDistanceBetween).
-const edge_dist: u32 = 9216; // about a grey difference of 32
+const edge_dist: u32 = 9216;
 const ink_max_luma: u32 = 150;
 const ink_min_contrast: u32 = 40;
-const cov_strong: u8 = 20; // percent of a cell covered by the dark class to become ink
-const cov_weak: u8 = 12; // below this a cell is not an ink candidate at all
-const ink_merge_dist: u32 = 5184; // two ink colours closer than this share one slot
+const cov_strong: u8 = 20;
+const cov_weak: u8 = 12;
+const ink_merge_dist: u32 = 5184;
 
-// Gap bridging between line ends.
-const max_aligned_gap: i64 = 2; // missing cells bridged without any evidence
-const max_evidence_gap: i64 = 5; // missing cells bridged when every one has weak ink evidence
-const local_depth: u8 = 12; // cells already connected within this many steps are not bridged
-const local_span: usize = 25; // 2 * local_depth + 1
+const max_aligned_gap: i64 = 2;
+const max_evidence_gap: i64 = 5;
+const local_depth: u8 = 12;
+const local_span: usize = 25;
 
 const max_cleanup_iterations: usize = 16;
 
@@ -145,8 +127,6 @@ fn farthestFrom(source: Source, region: Region, from: Rgb) Rgb {
     return best;
 }
 
-/// Assigns every source pixel of the region to the closer of two centres.
-/// Returns null when one class would be empty.
 fn classifyRound(source: Source, region: Region, c0: Rgb, c1: Rgb) ?Split {
     var sums0 = [3]u64{ 0, 0, 0 };
     var sums1 = [3]u64{ 0, 0, 0 };
@@ -215,7 +195,6 @@ fn reduceCells(
             const dark_luma = @min(luma0, luma1);
             const light_luma = @max(luma0, luma1);
 
-            // Edge cell: majority class wins (ties go to the lighter class).
             fill[cell] = if (dark_count > light_count) dark_mean else light_mean;
 
             if (dark_luma <= ink_max_luma and light_luma - dark_luma >= ink_min_contrast) {
@@ -257,7 +236,6 @@ fn ringComponents(fg: [8]bool) u32 {
     return components;
 }
 
-/// True when clearing the cell leaves its ink neighbours in one 8-connected piece.
 fn isSimple(grid: Grid, ink: []const bool, x: i64, y: i64) bool {
     var fg: [8]bool = undefined;
     for (0..8) |k| fg[k] = grid.get(ink, x + ring_dx[k], y + ring_dy[k]);
@@ -277,7 +255,6 @@ fn localSlot(dx: i64, dy: i64) usize {
     return @as(usize, @intCast(dy + radius)) * local_span + @as(usize, @intCast(dx + radius));
 }
 
-/// True when (x1, y1) can already be reached from (x0, y0) over ink cells within local_depth steps.
 fn locallyConnected(grid: Grid, ink: []const bool, x0: i64, y0: i64, x1: i64, y1: i64) bool {
     var seen: [local_span * local_span]bool = @splat(false);
     var queue: [local_span * local_span][2]i64 = undefined;
@@ -308,7 +285,6 @@ fn locallyConnected(grid: Grid, ink: []const bool, x0: i64, y0: i64, x1: i64, y1
     return false;
 }
 
-/// Bresenham line from (x0, y0) to (x1, y1); stores only the cells strictly between the ends.
 fn linePath(x0: i64, y0: i64, x1: i64, y1: i64, out: *[16][2]i64) usize {
     const dx: i64 = @intCast(@abs(x1 - x0));
     const dy: i64 = -@as(i64, @intCast(@abs(y1 - y0)));
@@ -351,7 +327,6 @@ fn buildInk(
         color[cell] = ink_color[cell];
     }
 
-    // Thin: keep one cell across a band, but never cut a line or shorten a line end.
     for (0..grid.h) |uy| {
         for (0..grid.w) |ux| {
             const x: i64 = @intCast(ux);
@@ -377,7 +352,6 @@ fn buildInk(
         }
     }
 
-    // Drop isolated ink specks.
     for (0..grid.h) |uy| {
         for (0..grid.w) |ux| {
             const x: i64 = @intCast(ux);
@@ -387,7 +361,6 @@ fn buildInk(
         }
     }
 
-    // Bridge gaps that start at a line end and continue roughly straight on.
     for (0..grid.h) |uy| {
         for (0..grid.w) |ux| {
             const x: i64 = @intCast(ux);
@@ -484,8 +457,6 @@ fn markSolid(grid: Grid, label: []const u8, ink: []const bool, solid: []bool) vo
     }
 }
 
-/// Every non-ink cell must sit in a 2x2 block of one colour. Cells that do not are moved to the
-/// neighbouring solid colour that is closest to the cell's own source colour.
 fn cleanup(
     grid: Grid,
     label: []u8,
@@ -552,8 +523,6 @@ fn paletteLimit(options: *const api.Options) usize {
     return default_palette_colors;
 }
 
-/// Converts `source_pixels` to a pixel-art-structured RGBA8 image. The caller has already
-/// validated every size, stride and capacity; the output is always opaque.
 pub fn convert(
     source_pixels: [*]const u8,
     input_width: u32,
@@ -604,7 +573,6 @@ pub fn convert(
     const limit = paletteLimit(options);
     var colors: [palette_mod.max_colors]Rgb = undefined;
 
-    // Ink slots first, so outline colours are never merged into mid-tones.
     var ink_cells: usize = 0;
     var ink_sums = [3]u64{ 0, 0, 0 };
     for (0..cell_count) |cell| {

@@ -30,6 +30,12 @@ pub const Options = extern struct {
 
 pub const abi_version: u32 = 0x00010000;
 
+pub const PixelArtMode = enum(u32) {
+    auto = 0,
+    grid = 1,
+    illustration = 2,
+};
+
 pub const PixelArtOptions = extern struct {
     struct_size: u32,
     version: u32,
@@ -39,6 +45,10 @@ pub const PixelArtOptions = extern struct {
     color_tolerance: u32,
     palette_max: u32,
     refine_iterations: u32,
+    mode: u32,
+    ink_percent: u32,
+    min_region: u32,
+    alpha_threshold: u32,
     reserved: u32,
 };
 
@@ -50,6 +60,10 @@ pub const PixelArtField = enum(u32) {
     color_tolerance = 4,
     palette_max = 5,
     refine_iterations = 6,
+    mode = 7,
+    ink_percent = 8,
+    min_region = 9,
+    alpha_threshold = 10,
 };
 
 pub const pixelart_defaults = PixelArtOptions{
@@ -61,5 +75,9 @@ pub const pixelart_defaults = PixelArtOptions{
     .color_tolerance = 14,
     .palette_max = 0,
     .refine_iterations = 5,
+    .mode = 0,
+    .ink_percent = 20,
+    .min_region = 4,
+    .alpha_threshold = 128,
     .reserved = 0,
 };
