@@ -56,6 +56,37 @@ byte[] pixelart = PixelArtConverter.Convert(
 Assert(pixelart.Length == 4 && pixelart[0] == 90 && pixelart[1] == 120 &&
     pixelart[2] == 150 && pixelart[3] == 255, "Pixelart preset conversion succeeds.");
 
+PixelArtSettings defaults = PixelArtConverter.GetPixelArtDefaults();
+Assert(defaults.Version == 2 && defaults.Mode == PixelArtMode.Auto && defaults.KeepTransparency == true,
+    "Pixelart defaults come from the native library.");
+byte[] versionOne = PixelArtConverter.Convert(
+    new byte[] { 90, 120, 150, 255 },
+    1,
+    1,
+    4,
+    1,
+    1,
+    new ConversionOptions
+    {
+        Preset = ConversionPreset.Pixelart,
+        PixelArt = new PixelArtSettings { Version = 1 }
+    });
+Assert(versionOne[0] == 90 && versionOne[3] == 255, "Pixelart version 1 can be selected.");
+Expect<PixelArtException>(
+    () => PixelArtConverter.Convert(
+        new byte[] { 90, 120, 150, 255 },
+        1,
+        1,
+        4,
+        1,
+        1,
+        new ConversionOptions
+        {
+            Preset = ConversionPreset.Pixelart,
+            PixelArt = new PixelArtSettings { PaletteMax = 1 }
+        }),
+    "Invalid pixelart settings are rejected by the native library.");
+
 Expect<ArgumentException>(
     () => PixelArtConverter.Convert(new byte[3], 1, 1, 4, 1, 1),
     "Undersized input is rejected.");

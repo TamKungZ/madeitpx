@@ -52,3 +52,20 @@ provided for `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `osx-x64`,
 and `osx-arm64`.
 
 Licensed under [MPL-2.0](https://mozilla.org/MPL/2.0/).
+
+## Pixelart preset
+
+`ConversionPreset.Pixelart` uses version 2 of the pixel-art pipeline. Settings left `null` keep the
+library default, and `PixelArtConverter.GetPixelArtDefaults()` returns all of them.
+
+```csharp
+var options = new ConversionOptions
+{
+    Preset = ConversionPreset.Pixelart,
+    PixelArt = new PixelArtSettings { Mode = PixelArtMode.Illustration, PaletteMax = 32 }
+};
+```
+
+`Version = 1` runs the original pipeline. With `KeepTransparency` (default) cells that were
+transparent in the source are returned with alpha 0. See
+[the pixelart documentation](https://github.com/TamKungZ/madeitpx/blob/main/docs/PIXELART.md).
