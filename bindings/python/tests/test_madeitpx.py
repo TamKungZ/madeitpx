@@ -5,9 +5,12 @@ from unittest.mock import patch
 import madeitpx
 from madeitpx import (
     ConversionOptions,
+    PixelArtMode,
+    PixelArtSettings,
     Preset,
     SamplingMode,
     convert_rgba8,
+    pixelart_defaults,
 )
 
 
@@ -74,6 +77,33 @@ class MadeItPxTests(unittest.TestCase):
         )
         self.assertEqual(len(result), 16)
         self.assertEqual(result[3::4], bytes((255, 255, 255, 255)))
+
+    def test_rejects_invalid_pixelart_settings(self):
+        with self.assertRaisesRegex(ValueError, "palette_max"):
+            PixelArtSettings(palette_max=-1)
+        with self.assertRaisesRegex(TypeError, "mode"):
+            PixelArtSettings(mode=1)
+
+    @unittest.skipUnless(os.environ.get("MADEITPX_LIBRARY_PATH"), "native library path not set")
+    def test_pixelart_defaults_and_version_one(self):
+        defaults = pixelart_defaults()
+        self.assertEqual(defaults.version, 2)
+        self.assertEqual(defaults.mode, PixelArtMode.AUTO)
+        self.assertTrue(defaults.keep_transparency)
+        pixel = bytes((90, 120, 150, 255))
+        for settings in (PixelArtSettings(), PixelArtSettings(version=1)):
+            result = convert_rgba8(
+                pixel, 1, 1, 1, 1,
+                options=ConversionOptions(preset=Preset.PIXELART, pixelart=settings),
+            )
+            self.assertEqual(result, pixel)
+        with self.assertRaises(madeitpx.ConversionError):
+            convert_rgba8(
+                pixel, 1, 1, 1, 1,
+                options=ConversionOptions(
+                    preset=Preset.PIXELART, pixelart=PixelArtSettings(palette_max=1)
+                ),
+            )
 
     def test_loads_bundled_library_automatically(self):
         with patch.dict(os.environ, {"MADEITPX_LIBRARY_PATH": ""}):

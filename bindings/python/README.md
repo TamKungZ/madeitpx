@@ -51,3 +51,21 @@ Linux is not currently supported. For local builds, set
 The release workflow publishes to PyPI using GitHub's trusted publishing.
 Publishing requires a PyPI trusted publisher configured for this repository,
 the `release.yml` workflow, and the `pypi` environment.
+
+## Pixelart preset
+
+`Preset.PIXELART` uses version 2 of the pixel-art pipeline. Settings you leave as `None` keep the
+library default; `pixelart_defaults()` returns all of them.
+
+```python
+from madeitpx import ConversionOptions, PixelArtMode, PixelArtSettings, Preset, convert_rgba8
+
+options = ConversionOptions(
+    preset=Preset.PIXELART,
+    pixelart=PixelArtSettings(mode=PixelArtMode.ILLUSTRATION, palette_max=32),
+)
+```
+
+`PixelArtSettings(version=1)` runs the original pipeline. With `keep_transparency` (default) cells
+that were transparent in the source are returned with alpha 0. See
+[the pixelart documentation](../../docs/PIXELART.md).

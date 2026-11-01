@@ -29,6 +29,62 @@ class SamplingMode(IntEnum):
     NEAREST = 1
 
 
+class PixelArtMode(IntEnum):
+    AUTO = 0
+    GRID = 1
+    ILLUSTRATION = 2
+
+
+_PIXELART_FIELDS = (
+    ("version", "version", "int"),
+    ("mode", "mode", "mode"),
+    ("grid_fit", "grid_fit", "bool"),
+    ("grid_search_permille", "grid_search_permille", "int"),
+    ("sample_inset_percent", "sample_inset_percent", "int"),
+    ("color_tolerance", "color_tolerance", "int"),
+    ("palette_max", "palette_max", "int"),
+    ("refine_iterations", "refine_iterations", "int"),
+    ("ink_percent", "ink_percent", "int"),
+    ("min_region", "min_region", "int"),
+    ("alpha_threshold", "alpha_threshold", "int"),
+    ("keep_transparency", "keep_transparency", "bool"),
+)
+
+
+@dataclass(frozen=True)
+class PixelArtSettings:
+    version: Optional[int] = None
+    mode: Optional[PixelArtMode] = None
+    grid_fit: Optional[bool] = None
+    grid_search_permille: Optional[int] = None
+    sample_inset_percent: Optional[int] = None
+    color_tolerance: Optional[int] = None
+    palette_max: Optional[int] = None
+    refine_iterations: Optional[int] = None
+    ink_percent: Optional[int] = None
+    min_region: Optional[int] = None
+    alpha_threshold: Optional[int] = None
+    keep_transparency: Optional[bool] = None
+
+    def __post_init__(self) -> None:
+        for name, _, kind in _PIXELART_FIELDS:
+            value = getattr(self, name)
+            if value is None:
+                continue
+            if kind == "bool":
+                if not isinstance(value, bool):
+                    raise TypeError(f"{name} must be a bool or None")
+            elif kind == "mode":
+                if not isinstance(value, PixelArtMode):
+                    raise TypeError("mode must be a PixelArtMode value or None")
+            elif (
+                not isinstance(value, int)
+                or isinstance(value, bool)
+                or not 0 <= value <= _UINT32_MAX
+            ):
+                raise ValueError(f"{name} must be a non-negative integer or None")
+
+
 @dataclass(frozen=True)
 class ConversionOptions:
     preset: Preset = Preset.BALANCED
@@ -36,6 +92,7 @@ class ConversionOptions:
     background_rgb: int = 0
     sampling: SamplingMode = SamplingMode.NEAREST
     cluster_cleanup: bool = True
+    pixelart: PixelArtSettings = PixelArtSettings()
 
     def __post_init__(self) -> None:
         if not isinstance(self.preset, Preset):
@@ -59,6 +116,8 @@ class ConversionOptions:
             raise ValueError("background_rgb must be a 0xRRGGBB integer")
         if not isinstance(self.cluster_cleanup, bool):
             raise TypeError("cluster_cleanup must be a bool")
+        if not isinstance(self.pixelart, PixelArtSettings):
+            raise TypeError("pixelart must be a PixelArtSettings value")
 
 
 class ConversionError(RuntimeError):
@@ -87,6 +146,25 @@ class _NativeOptions(ctypes.Structure):
         ("background_rgb", ctypes.c_uint32),
         ("sample_mode", ctypes.c_uint32),
         ("cluster_cleanup", ctypes.c_uint32),
+        ("reserved", ctypes.c_uint32),
+    ]
+
+
+class _NativePixelArtOptions(ctypes.Structure):
+    _fields_ = [
+        ("struct_size", ctypes.c_uint32),
+        ("version", ctypes.c_uint32),
+        ("grid_fit", ctypes.c_uint32),
+        ("grid_search_permille", ctypes.c_uint32),
+        ("sample_inset_percent", ctypes.c_uint32),
+        ("color_tolerance", ctypes.c_uint32),
+        ("palette_max", ctypes.c_uint32),
+        ("refine_iterations", ctypes.c_uint32),
+        ("mode", ctypes.c_uint32),
+        ("ink_percent", ctypes.c_uint32),
+        ("min_region", ctypes.c_uint32),
+        ("alpha_threshold", ctypes.c_uint32),
+        ("keep_transparency", ctypes.c_uint32),
         ("reserved", ctypes.c_uint32),
     ]
 
@@ -141,6 +219,22 @@ def _load_native_library(library_path: str) -> ctypes.CDLL:
         ctypes.c_size_t,
     ]
     library.madeitpx_convert_rgba8.restype = ctypes.c_int
+    library.madeitpx_pixelart_options_init.argtypes = [ctypes.POINTER(_NativePixelArtOptions)]
+    library.madeitpx_pixelart_options_init.restype = ctypes.c_int
+    library.madeitpx_convert_pixelart_rgba8.argtypes = [
+        ctypes.POINTER(ctypes.c_uint8),
+        ctypes.c_size_t,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.c_size_t,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.POINTER(_NativeOptions),
+        ctypes.POINTER(_NativePixelArtOptions),
+        ctypes.POINTER(ctypes.c_uint8),
+        ctypes.c_size_t,
+    ]
+    library.madeitpx_convert_pixelart_rgba8.restype = ctypes.c_int
     return library
 
 
@@ -169,6 +263,25 @@ def _check_status(status: int) -> None:
         raise ConversionError(status)
 
 
+def pixelart_defaults(
+    *, library_path: Optional[Union[str, os.PathLike[str]]] = None
+) -> PixelArtSettings:
+    """Return the library defaults for every pixel-art setting."""
+    library = _load_native_library(_library_path(library_path))
+    native = _NativePixelArtOptions()
+    _check_status(library.madeitpx_pixelart_options_init(ctypes.byref(native)))
+    values = {}
+    for name, native_name, kind in _PIXELART_FIELDS:
+        raw = getattr(native, native_name)
+        if kind == "bool":
+            values[name] = raw == 1
+        elif kind == "mode":
+            values[name] = PixelArtMode(raw)
+        else:
+            values[name] = raw
+    return PixelArtSettings(**values)
+
+
 def convert_rgba8(
     input_pixels: Union[bytes, bytearray, memoryview],
     input_width: int,
@@ -180,7 +293,11 @@ def convert_rgba8(
     options: Optional[ConversionOptions] = None,
     library_path: Optional[Union[str, os.PathLike[str]]] = None,
 ) -> bytes:
-    """Convert RGBA8 pixels to an opaque RGBA8 buffer."""
+    """Convert RGBA8 pixels to an RGBA8 buffer.
+
+    The result is opaque, except for transparent cells that the pixelart preset keeps
+    (see PixelArtSettings.keep_transparency).
+    """
     if not isinstance(input_pixels, (bytes, bytearray, memoryview)):
         raise TypeError("input_pixels must be bytes, bytearray, or memoryview")
     _validate_dimension(input_width, "input_width")
@@ -226,6 +343,30 @@ def convert_rgba8(
 
     source_buffer = (ctypes.c_uint8 * len(source)).from_buffer_copy(source)
     output_buffer = (ctypes.c_uint8 * output_size)()
+    if settings.preset == Preset.PIXELART:
+        native_pixelart = _NativePixelArtOptions()
+        _check_status(library.madeitpx_pixelart_options_init(ctypes.byref(native_pixelart)))
+        for name, native_name, kind in _PIXELART_FIELDS:
+            value = getattr(settings.pixelart, name)
+            if value is None:
+                continue
+            setattr(native_pixelart, native_name, int(value))
+        _check_status(
+            library.madeitpx_convert_pixelart_rgba8(
+                source_buffer,
+                len(source),
+                input_width,
+                input_height,
+                stride,
+                target_width,
+                target_height,
+                ctypes.byref(native_options),
+                ctypes.byref(native_pixelart),
+                output_buffer,
+                output_size,
+            )
+        )
+        return bytes(output_buffer)
     _check_status(
         library.madeitpx_convert_rgba8(
             source_buffer,
@@ -246,7 +387,10 @@ def convert_rgba8(
 __all__ = [
     "ConversionError",
     "ConversionOptions",
+    "PixelArtMode",
+    "PixelArtSettings",
     "Preset",
     "SamplingMode",
     "convert_rgba8",
+    "pixelart_defaults",
 ]
